@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;" />
+    <title>Reel Queue</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"><span></span></div>
+          <div>
+            <h1>Reel Queue</h1>
+            <p>Local browser posting utility</p>
+          </div>
+        </div>
+        <div class="status-cluster" aria-live="polite">
+          <span id="statusDot" class="status-dot"></span>
+          <div>
+            <strong id="statusTitle">Ready</strong>
+            <span id="countdown"></span>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="setup-panel" aria-labelledby="setupTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="setupTitle">Posting setup</h2>
+              <p>Choose an account session and the content to publish.</p>
+            </div>
+            <button id="openLoginButton" class="button secondary" type="button">Open Instagram login</button>
+          </div>
+
+          <div id="notice" class="notice" role="alert" hidden></div>
+
+          <div class="form-grid">
+            <div class="field account-field">
+              <label for="profileSelect">Account profile</label>
+              <div class="control-row">
+                <select id="profileSelect" aria-describedby="profileHelp"></select>
+                <button id="addProfileButton" class="icon-button" type="button" aria-label="Add account profile" title="Add account profile">+</button>
+                <button id="removeProfileButton" class="icon-button danger-quiet" type="button" aria-label="Remove account profile" title="Remove account profile">−</button>
+              </div>
+              <p id="profileHelp" class="helper">Each profile keeps its own Chrome login session. Passwords are not stored.</p>
+            </div>
+
+            <div class="field interval-field">
+              <label for="intervalInput">Gap between posts</label>
+              <div class="number-control">
+                <input id="intervalInput" type="number" min="1" max="1440" step="1" value="20" />
+                <span>minutes</span>
+              </div>
+              <p class="helper">The timer starts after Instagram confirms a successful post.</p>
+            </div>
+
+            <div class="field file-field">
+              <label for="folderPath">Video folder</label>
+              <div class="path-control">
+                <input id="folderPath" type="text" readonly placeholder="No folder selected" />
+                <button id="folderButton" class="button secondary" type="button">Choose folder</button>
+              </div>
+              <p class="helper">Videos are posted in natural filename order.</p>
+            </div>
+
+            <div class="field file-field">
+              <label for="thumbnailPath">Thumbnail</label>
+              <div class="path-control">
+                <input id="thumbnailPath" type="text" readonly placeholder="No image selected" />
+                <button id="thumbnailButton" class="button secondary" type="button">Choose image</button>
+              </div>
+              <p class="helper">The same JPG or PNG image is used for every Reel.</p>
+            </div>
+
+            <div class="field caption-field">
+              <div class="label-row">
+                <label for="captionInput">Caption</label>
+                <span id="captionCount">0 / 2200</span>
+              </div>
+              <textarea id="captionInput" maxlength="2200" rows="6" placeholder="Write the caption used for every Reel"></textarea>
+            </div>
+
+            <label class="check-row">
+              <input id="trashToggle" type="checkbox" checked />
+              <span>
+                <strong>Move posted videos to Trash</strong>
+                <small>Only after Instagram shows a positive success confirmation.</small>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <aside class="run-panel" aria-labelledby="runTitle">
+          <div>
+            <h2 id="runTitle">Queue control</h2>
+            <p id="runMessage">Complete the setup, then start the queue.</p>
+          </div>
+
+          <div class="queue-metric">
+            <span>Remaining</span>
+            <strong id="queueCount">0</strong>
+          </div>
+
+          <div class="current-file" id="currentFileBlock" hidden>
+            <span>Current file</span>
+            <strong id="currentFile"></strong>
+          </div>
+
+          <div class="run-actions">
+            <button id="startButton" class="button primary" type="button">Start queue</button>
+            <button id="stopButton" class="button stop" type="button" disabled>Stop safely</button>
+          </div>
+
+          <p class="safety-copy">If Instagram requests verification, the queue pauses and keeps the source video.</p>
+        </aside>
+
+        <section class="activity-panel" aria-labelledby="activityTitle">
+          <div class="section-heading compact">
+            <div>
+              <h2 id="activityTitle">Activity</h2>
+              <p>Recent actions and errors from this session.</p>
+            </div>
+            <button id="clearLogButton" class="text-button" type="button">Clear view</button>
+          </div>
+          <div id="activityList" class="activity-list" aria-live="polite">
+            <div class="empty-state">No activity yet.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="profileDialog">
+      <form method="dialog" id="profileForm">
+        <h2>Add account profile</h2>
+        <p>Create a separate Chrome session for an Instagram account.</p>
+        <div class="field">
+          <label for="profileNameInput">Profile name</label>
+          <input id="profileNameInput" type="text" maxlength="48" placeholder="Example: Main account" autocomplete="off" />
+          <p id="profileError" class="field-error" hidden></p>
+        </div>
+        <div class="dialog-actions">
+          <button class="button secondary" value="cancel" type="submit">Cancel</button>
+          <button id="createProfileButton" class="button primary" value="default" type="button">Create profile</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

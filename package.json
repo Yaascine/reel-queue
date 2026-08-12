@@ -1,0 +1,63 @@
+{
+  "name": "reel-queue",
+  "version": "1.0.0",
+  "description": "A local desktop queue for posting Instagram Reels through a visible Chrome session.",
+  "main": "src/main.js",
+  "author": "Yaascine",
+  "license": "MIT",
+  "homepage": "https://github.com/Yaascine/reel-queue",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yaascine/reel-queue.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "pack": "electron-builder --dir",
+    "pack:win": "electron-builder --win --x64 --dir",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "playwright-core": "1.62.1"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.local.reelqueue",
+    "productName": "Reel Queue",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
