@@ -171,6 +171,7 @@ textarea { resize: vertical; min-height: 118px; line-height: 1.5; }
 .icon-button:hover:not(:disabled) { border-color: var(--accent); }
 .icon-button.danger-quiet:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 .text-button { padding: 4px 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 650; }
+.activity-actions { display: flex; align-items: center; gap: 18px; }
 
 .check-row {
   display: flex;

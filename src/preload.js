@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("reelQueue", {
   createProfile: (name) => ipcRenderer.invoke("profiles:create", name),
   removeProfile: (id) => ipcRenderer.invoke("profiles:remove", id),
   openLogin: (id) => ipcRenderer.invoke("profiles:open-login", id),
+  openDiagnostics: () => ipcRenderer.invoke("app:open-diagnostics"),
   start: (settings) => ipcRenderer.invoke("automation:start", settings),
   stop: () => ipcRenderer.invoke("automation:stop"),
   onStatus: (callback) => {

@@ -6,7 +6,7 @@ const elements = Object.fromEntries(
     "addProfileButton", "removeProfileButton", "intervalInput", "folderPath", "folderButton",
     "thumbnailPath", "thumbnailButton", "captionInput", "captionCount", "trashToggle",
     "runMessage", "queueCount", "currentFileBlock", "currentFile", "startButton", "stopButton",
-    "activityList", "clearLogButton", "profileDialog", "profileForm", "profileNameInput",
+    "activityList", "openDiagnosticsButton", "clearLogButton", "profileDialog", "profileForm", "profileNameInput",
     "profileError", "createProfileButton"
   ].map((id) => [id, document.getElementById(id)])
 );
@@ -211,6 +211,11 @@ elements.stopButton.addEventListener("click", async () => {
 
 elements.clearLogButton.addEventListener("click", () => {
   elements.activityList.innerHTML = '<div class="empty-state">No activity in this view.</div>';
+});
+
+elements.openDiagnosticsButton.addEventListener("click", async () => {
+  const error = await api.openDiagnostics();
+  if (error) showNotice(errorMessage(error));
 });
 
 api.onStatus((status) => renderStatus(status));

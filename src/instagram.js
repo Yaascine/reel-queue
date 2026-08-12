@@ -1,7 +1,10 @@
+const fs = require("node:fs/promises");
 const path = require("node:path");
 
+const DEFAULT_BASE_URL = "https://www.instagram.com";
+
 class LoginRequiredError extends Error {
-  constructor(message = "Instagram login is required for this account profile.") {
+  constructor(message = "Instagram login is required for this account profile. Open Instagram login, sign in, and try again.") {
     super(message);
     this.name = "LoginRequiredError";
     this.code = "LOGIN_REQUIRED";
@@ -16,14 +19,22 @@ class ConfirmationError extends Error {
   }
 }
 
+function escapePattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function firstVisible(locators, timeout = 12_000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     for (const locator of locators) {
       try {
-        if (await locator.first().isVisible({ timeout: 300 })) return locator.first();
+        const count = await locator.count();
+        for (let index = 0; index < count; index += 1) {
+          const candidate = locator.nth(index);
+          if (await candidate.isVisible({ timeout: 250 })) return candidate;
+        }
       } catch {
-        // The interface may be re-rendering while controls are checked.
+        // Instagram frequently replaces the composer DOM while media is processing.
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -31,64 +42,112 @@ async function firstVisible(locators, timeout = 12_000) {
   return null;
 }
 
-async function clickNamed(page, names, timeout = 15_000) {
-  const patterns = names.map((name) => new RegExp(`^${name}$`, "i"));
-  const locators = patterns.flatMap((pattern) => [
-    page.getByRole("button", { name: pattern }),
-    page.getByRole("link", { name: pattern }),
-    page.getByText(pattern, { exact: true })
-  ]);
-  const target = await firstVisible(locators, timeout);
+function namedLocators(page, names, roles = ["button", "link", "menuitem", "tab"]) {
+  const patterns = names.map((name) => new RegExp(`^\\s*${escapePattern(name)}\\s*$`, "i"));
+  return [
+    ...patterns.flatMap((pattern) => roles.map((role) => page.getByRole(role, { name: pattern }))),
+    ...patterns.map((pattern) => page.getByText(pattern, { exact: true }))
+  ];
+}
+
+async function clickNamed(page, names, timeout = 15_000, options = {}) {
+  const target = await firstVisible(namedLocators(page, names, options.roles), timeout);
   if (!target) throw new Error(`Instagram control not found: ${names.join(" or ")}.`);
   await target.click();
+  return target;
+}
+
+async function clickIfVisible(page, names, timeout = 1_000) {
+  const target = await firstVisible(namedLocators(page, names), timeout);
+  if (!target) return false;
+  await target.click().catch(() => {});
+  return true;
 }
 
 async function dismissCommonPrompts(page) {
-  for (const label of ["Not Now", "Cancel"]) {
-    const button = await firstVisible(
-      [page.getByRole("button", { name: new RegExp(`^${label}$`, "i") })],
-      800
-    );
-    if (button) await button.click().catch(() => {});
+  for (const label of ["Not Now", "Not now", "Cancel", "Close"]) {
+    if (await clickIfVisible(page, [label], 500)) return;
   }
 }
 
 async function assertLoggedIn(page) {
   if (page.url().includes("/accounts/login")) throw new LoginRequiredError();
-  const loginInput = page.locator('input[name="username"]');
-  if (await loginInput.isVisible({ timeout: 1000 }).catch(() => false)) throw new LoginRequiredError();
+  const loginInput = page.locator('input[name="username"], input[autocomplete="username"]');
+  const count = await loginInput.count();
+  if (count && (await loginInput.nth(0).isVisible({ timeout: 800 }).catch(() => false))) {
+    throw new LoginRequiredError();
+  }
 }
 
-async function setVideoFile(page, videoPath) {
-  const input = page.locator('input[type="file"]').first();
-  await input.waitFor({ state: "attached", timeout: 15_000 });
+async function waitForAttachedInput(page, selectors, timeout = 20_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const selector of selectors) {
+      const locator = page.locator(selector);
+      const count = await locator.count().catch(() => 0);
+      if (count) return locator.nth(count - 1);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return null;
+}
+
+async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
+  const root = baseUrl.replace(/\/$/, "");
+
+  // Going straight to the composer avoids relying on Instagram's frequently renamed sidebar control.
+  await page.goto(`${root}/create/select/?hl=en`, { waitUntil: "domcontentloaded" });
+  await dismissCommonPrompts(page);
+  await assertLoggedIn(page);
+
+  let input = await waitForAttachedInput(page, ['input[type="file"][accept*="video"]', 'input[type="file"]'], 12_000);
+  if (input) return input;
+
+  // Fallback for accounts where Instagram redirects direct composer URLs to the home feed.
+  await page.goto(`${root}/?hl=en`, { waitUntil: "domcontentloaded" });
+  await dismissCommonPrompts(page);
+  await assertLoggedIn(page);
+  await clickNamed(page, ["Create", "New post", "Post"], 30_000);
+  await clickIfVisible(page, ["Reel"], 2_000);
+  input = await waitForAttachedInput(page, ['input[type="file"][accept*="video"]', 'input[type="file"]'], 15_000);
+  if (!input) throw new Error("Instagram opened the composer but did not provide a video selector.");
+  return input;
+}
+
+async function setVideoFile(input, videoPath) {
   await input.setInputFiles(videoPath);
 }
 
 async function setCoverFile(page, thumbnailPath) {
-  await clickNamed(page, ["Cover photo", "Edit cover"], 8_000).catch(() => {});
+  const coverControl = await firstVisible(namedLocators(page, ["Cover photo", "Edit cover", "Cover"]), 15_000);
+  if (!coverControl) return false;
+  await coverControl.click();
 
-  const imageInput = page.locator('input[type="file"][accept*="image"]');
-  if (await imageInput.count()) {
-    await imageInput.last().setInputFiles(thumbnailPath);
-    await clickNamed(page, ["Done", "Save"], 8_000).catch(() => {});
-    return true;
+  let imageInput = await waitForAttachedInput(
+    page,
+    ['input[type="file"][accept*="image"]', 'input[type="file"][accept*="jpeg"]', 'input[type="file"][accept*="png"]'],
+    2_000
+  );
+
+  if (!imageInput) {
+    const selectButton = await firstVisible(namedLocators(page, ["Select from computer", "Upload from computer"]), 5_000);
+    if (!selectButton) return false;
+
+    const chooserPromise = page.waitForEvent("filechooser", { timeout: 8_000 }).catch(() => null);
+    await selectButton.click();
+    const chooser = await chooserPromise;
+    if (chooser) {
+      await chooser.setFiles(thumbnailPath);
+    } else {
+      imageInput = await waitForAttachedInput(page, ['input[type="file"][accept*="image"]', 'input[type="file"]'], 3_000);
+      if (!imageInput) return false;
+      await imageInput.setInputFiles(thumbnailPath);
+    }
+  } else {
+    await imageInput.setInputFiles(thumbnailPath);
   }
 
-  const selectButton = await firstVisible(
-    [
-      page.getByRole("button", { name: /select from computer/i }),
-      page.getByText(/select from computer/i)
-    ],
-    4_000
-  );
-  if (!selectButton) return false;
-  await selectButton.click();
-
-  const inputs = page.locator('input[type="file"]');
-  if (!(await inputs.count())) return false;
-  await inputs.last().setInputFiles(thumbnailPath);
-  await clickNamed(page, ["Done", "Save"], 8_000).catch(() => {});
+  await clickIfVisible(page, ["Done", "Save"], 8_000);
   return true;
 }
 
@@ -99,17 +158,18 @@ async function fillCaption(page, caption) {
       page.locator('[contenteditable="true"][aria-label*="caption" i]'),
       page.getByRole("textbox", { name: /caption/i })
     ],
-    12_000
+    15_000
   );
   if (!editor) throw new Error("Instagram caption field was not found.");
   await editor.fill(caption);
 }
 
-async function waitForPositiveConfirmation(page, timeout = 90_000) {
+async function waitForPositiveConfirmation(page, timeout = 120_000) {
   const confirmation = await firstVisible(
     [
       page.getByText(/your (reel|post) has been shared/i),
-      page.getByText(/(reel|post) shared/i),
+      page.getByText(/(reel|post) (was )?shared/i),
+      page.getByText(/shared successfully/i),
       page.getByRole("heading", { name: /shared/i })
     ],
     timeout
@@ -117,54 +177,81 @@ async function waitForPositiveConfirmation(page, timeout = 90_000) {
   return Boolean(confirmation);
 }
 
-async function captureFailure(page, screenshotRoot, videoPath) {
+async function captureFailure(page, screenshotRoot, videoPath, stage) {
+  await fs.mkdir(screenshotRoot, { recursive: true });
   const base = path.basename(videoPath).replace(/[^a-z0-9._-]+/gi, "-");
-  const output = path.join(screenshotRoot, `${Date.now()}-${base}.png`);
-  await page.screenshot({ path: output, fullPage: true }).catch(() => {});
-  return output;
+  const prefix = path.join(screenshotRoot, `${Date.now()}-${base}`);
+  const screenshotPath = `${prefix}.png`;
+  const diagnosticPath = `${prefix}.json`;
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+
+  const diagnostics = await page
+    .evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      visibleText: document.body?.innerText?.slice(0, 12_000) || "",
+      controls: [...document.querySelectorAll("button, a, input, textarea, [role]")].slice(0, 250).map((element) => ({
+        tag: element.tagName,
+        role: element.getAttribute("role"),
+        type: element.getAttribute("type"),
+        name: element.getAttribute("name"),
+        ariaLabel: element.getAttribute("aria-label"),
+        accept: element.getAttribute("accept"),
+        text: element.textContent?.trim().slice(0, 160) || ""
+      }))
+    }))
+    .catch(() => ({ url: page.url(), title: "", visibleText: "", controls: [] }));
+  await fs.writeFile(diagnosticPath, `${JSON.stringify({ stage, ...diagnostics }, null, 2)}\n`, "utf8").catch(() => {});
+  return { screenshotPath, diagnosticPath };
 }
 
-async function publishReel({ page, videoPath, thumbnailPath, caption, screenshotRoot, onStep }) {
+async function publishReel({
+  page,
+  videoPath,
+  thumbnailPath,
+  caption,
+  screenshotRoot,
+  onStep = () => {},
+  baseUrl = DEFAULT_BASE_URL
+}) {
+  let stage = "opening Instagram";
   try {
-    onStep("Opening Instagram");
+    onStep("Opening Instagram composer");
     await page.bringToFront();
-    await page.goto("https://www.instagram.com/?hl=en", { waitUntil: "domcontentloaded" });
-    await dismissCommonPrompts(page);
-    await assertLoggedIn(page);
+    const videoInput = await openComposer(page, baseUrl);
 
-    onStep("Opening the Reel composer");
-    await clickNamed(page, ["Create"]);
-    const reelChoice = await firstVisible(
-      [page.getByRole("button", { name: /reel/i }), page.getByText(/^reel$/i)],
-      2_500
-    );
-    if (reelChoice) await reelChoice.click();
-
+    stage = "selecting the video";
     onStep("Selecting the video");
-    await setVideoFile(page, videoPath);
+    await setVideoFile(videoInput, videoPath);
 
-    const formatDialog = await firstVisible(
-      [page.getByRole("button", { name: /ok/i }), page.getByRole("button", { name: /continue/i })],
-      2_000
-    );
+    const formatDialog = await firstVisible(namedLocators(page, ["OK", "Continue"]), 2_000);
     if (formatDialog) await formatDialog.click();
 
+    stage = "waiting for video processing";
     onStep("Preparing the video");
-    await clickNamed(page, ["Next"], 90_000);
-    await clickNamed(page, ["Next"], 90_000).catch(() => {});
+    await clickNamed(page, ["Next"], 120_000);
 
+    // The cover picker is on the edit step. It must be handled before the second Next click.
+    stage = "setting the thumbnail";
     onStep("Setting the thumbnail");
     const coverApplied = await setCoverFile(page, thumbnailPath);
     if (!coverApplied) {
-      throw new Error("Instagram did not expose its cover image picker. The video was not posted.");
+      throw new Error("Instagram did not expose its cover image picker on the edit step. The video was not posted.");
     }
 
+    stage = "opening the caption step";
+    onStep("Opening caption settings");
+    await clickNamed(page, ["Next"], 30_000);
+
+    stage = "adding the caption";
     onStep("Adding the caption");
     await fillCaption(page, caption);
 
+    stage = "sharing the Reel";
     onStep("Sharing the Reel");
     await clickNamed(page, ["Share"], 15_000);
 
+    stage = "waiting for Instagram confirmation";
     onStep("Waiting for Instagram confirmation");
     const confirmed = await waitForPositiveConfirmation(page);
     if (!confirmed) {
@@ -175,15 +262,22 @@ async function publishReel({ page, videoPath, thumbnailPath, caption, screenshot
 
     return { confirmed: true };
   } catch (error) {
-    error.screenshotPath = await captureFailure(page, screenshotRoot, videoPath);
+    error.stage = stage;
+    const diagnostics = await captureFailure(page, screenshotRoot, videoPath, stage);
+    error.screenshotPath = diagnostics.screenshotPath;
+    error.diagnosticPath = diagnostics.diagnosticPath;
     throw error;
   }
 }
 
 module.exports = {
+  DEFAULT_BASE_URL,
   LoginRequiredError,
   ConfirmationError,
   firstVisible,
+  clickNamed,
+  openComposer,
   publishReel,
+  setCoverFile,
   waitForPositiveConfirmation
 };

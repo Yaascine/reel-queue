@@ -16,9 +16,16 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 - Account switching is manual. The app does not rotate profiles automatically when Instagram restricts an account.
 - A source video is moved to the operating system Trash or Recycle Bin only after Instagram displays a positive sharing confirmation.
 - When confirmation is missing, the source video remains untouched and a screenshot is saved in the application's data directory.
+- A matching JSON diagnostic is saved beside each failure screenshot. Use **Open diagnostics** in the Activity panel to inspect it.
 - Stop requests finish the current browser action safely, then prevent the next upload.
 
 Browser automation can violate Instagram's terms and may result in verification prompts, posting restrictions, or account loss. Test with an account you can afford to lose.
+
+## Troubleshooting
+
+The app opens Instagram's composer directly, then follows the current two-screen workflow: video edit and cover selection first, caption and sharing second. If Instagram changes this flow again, Reel Queue stops without deleting the video and captures the current controls for diagnosis.
+
+If a run reports that login is required, select the account profile, click **Open Instagram login**, finish login or verification in Chrome, and retry. Do not close the Chrome window while a queue is running.
 
 ## Requirements
 

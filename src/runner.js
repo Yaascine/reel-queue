@@ -172,7 +172,11 @@ class AutomationRunner {
       message,
       nextRunAt: null
     });
-    await this.log("error", message, { screenshotPath: error?.screenshotPath || "" });
+    await this.log("error", message, {
+      stage: error?.stage || "",
+      screenshotPath: error?.screenshotPath || "",
+      diagnosticPath: error?.diagnosticPath || ""
+    });
   }
 }
 

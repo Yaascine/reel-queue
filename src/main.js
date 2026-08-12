@@ -67,6 +67,7 @@ function registerIpc() {
   });
 
   ipcMain.handle("settings:save", (_event, settings) => store.saveSettings(settings));
+  ipcMain.handle("app:open-diagnostics", () => shell.openPath(store.screenshotRoot));
   ipcMain.handle("profiles:create", async (_event, name) => {
     if (runner.running) throw new Error("Stop the automation before adding an account profile.");
     return store.createProfile(name);
