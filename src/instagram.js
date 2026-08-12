@@ -95,21 +95,32 @@ async function waitForAttachedInput(page, selectors, timeout = 20_000) {
 async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
   const root = baseUrl.replace(/\/$/, "");
 
-  // Going straight to the composer avoids relying on Instagram's frequently renamed sidebar control.
-  await page.goto(`${root}/create/select/?hl=en`, { waitUntil: "domcontentloaded" });
-  await dismissCommonPrompts(page);
-  await assertLoggedIn(page);
-
-  let input = await waitForAttachedInput(page, ['input[type="file"][accept*="video"]', 'input[type="file"]'], 12_000);
-  if (input) return input;
-
-  // Fallback for accounts where Instagram redirects direct composer URLs to the home feed.
+  // Instagram currently treats /create/select/ as the public @create profile on
+  // some accounts. Always open the composer from the signed-in home navigation.
   await page.goto(`${root}/?hl=en`, { waitUntil: "domcontentloaded" });
   await dismissCommonPrompts(page);
   await assertLoggedIn(page);
-  await clickNamed(page, ["Create", "New post", "Post"], 30_000);
+
+  const createControl = await firstVisible(
+    [
+      ...namedLocators(page, ["Create", "New post", "Post"]),
+      page.locator('[aria-label="Create"], [aria-label="New post"]'),
+      page.locator('a[href*="/create/"]')
+    ],
+    30_000
+  );
+  if (!createControl) throw new Error("Instagram control not found: Create or New post.");
+  await createControl.click();
   await clickIfVisible(page, ["Reel"], 2_000);
-  input = await waitForAttachedInput(page, ['input[type="file"][accept*="video"]', 'input[type="file"]'], 15_000);
+
+  const input = await waitForAttachedInput(
+    page,
+    [
+      '[role="dialog"] input[type="file"][accept*="video" i]',
+      'input[type="file"][accept*="video" i]'
+    ],
+    15_000
+  );
   if (!input) throw new Error("Instagram opened the composer but did not provide a video selector.");
   return input;
 }

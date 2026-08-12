@@ -23,7 +23,7 @@ Browser automation can violate Instagram's terms and may result in verification 
 
 ## Troubleshooting
 
-The app opens Instagram's composer directly, then follows the current two-screen workflow: video edit and cover selection first, caption and sharing second. If Instagram changes this flow again, Reel Queue stops without deleting the video and captures the current controls for diagnosis.
+The app opens Instagram's composer from the signed-in home navigation, then follows the current two-screen workflow: video edit and cover selection first, caption and sharing second. If Instagram changes this flow again, Reel Queue stops without deleting the video and captures the current controls for diagnosis.
 
 If a run reports that login is required, select the account profile, click **Open Instagram login**, finish login or verification in Chrome, and retry. Do not close the Chrome window while a queue is running.
 

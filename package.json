@@ -1,6 +1,6 @@
 {
   "name": "reel-queue",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A local desktop queue for posting Instagram Reels through a visible Chrome session.",
   "main": "src/main.js",
   "author": "Yaascine",

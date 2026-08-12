@@ -12,22 +12,28 @@ const mockInstagram = `<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8"><title>Mock Instagram composer</title></head>
   <body>
+    <input id="unrelatedProfileInput" type="file" accept="image/jpeg" hidden>
     <main id="app">
-      <h1>Create new post</h1>
-      <section id="selectStage">
-        <input id="videoInput" type="file" accept="video/mp4,video/quicktime">
-        <button id="firstNext" hidden>Next</button>
-      </section>
+      <h1>Instagram home</h1>
+      <button id="createButton" aria-label="Create">Create</button>
     </main>
     <script>
       const app = document.querySelector('#app');
       const events = [];
       window.testEvents = events;
-      document.querySelector('#videoInput').addEventListener('change', (event) => {
-        events.push('video:' + event.target.files[0].name);
-        document.querySelector('#firstNext').hidden = false;
-      });
-      document.querySelector('#firstNext').addEventListener('click', () => {
+      document.querySelector('#createButton').addEventListener('click', () => {
+        events.push('create-open');
+        app.innerHTML = \
+          '<h1>Create new post</h1>' +
+          '<section id="selectStage">' +
+          '<input id="videoInput" type="file" accept="video/mp4,video/quicktime">' +
+          '<button id="firstNext" hidden>Next</button>' +
+          '</section>';
+        document.querySelector('#videoInput').addEventListener('change', (event) => {
+          events.push('video:' + event.target.files[0].name);
+          document.querySelector('#firstNext').hidden = false;
+        });
+        document.querySelector('#firstNext').addEventListener('click', () => {
         events.push('first-next');
         app.innerHTML = \
           '<h1>Edit</h1>' +
@@ -61,6 +67,7 @@ const mockInstagram = `<!doctype html>
             app.innerHTML = '<h1>Your reel has been shared</h1>';
           });
         });
+      });
       });
     </script>
   </body>
@@ -99,6 +106,7 @@ test("publishes through the current two-step edit and caption flow", { skip: !fi
 
   assert.deepEqual(result, { confirmed: true });
   assert.deepEqual(await page.evaluate(() => window.testEvents), [
+    "create-open",
     "video:test-reel.mp4",
     "first-next",
     "cover-open",
