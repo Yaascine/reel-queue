@@ -2,16 +2,18 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { isSupportedVideo, naturalCompare, normalizeSettings } = require("./shared");
 const { publishReel } = require("./instagram");
+const { moveToPosted, prepareVideo } = require("./media");
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 class AutomationRunner {
-  constructor({ store, chrome, trashItem, emit, publisher = publishReel }) {
+  constructor({ store, chrome, emit, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted }) {
     this.store = store;
     this.chrome = chrome;
-    this.trashItem = trashItem;
     this.emit = emit;
     this.publisher = publisher;
+    this.mediaPreparer = mediaPreparer;
+    this.postedMover = postedMover;
     this.running = false;
     this.stopRequested = false;
     this.state = {
@@ -103,16 +105,30 @@ class AutomationRunner {
       }
 
       const videoPath = pending[0];
-      this.update({ currentFile: videoPath, message: "Opening Chrome", nextRunAt: null });
-      const handle = await this.chrome.open(settings.profileId);
-      await this.publisher({
-        page: handle.page,
-        videoPath,
-        thumbnailPath: settings.thumbnailPath,
-        caption: settings.caption,
-        screenshotRoot: this.store.screenshotRoot,
-        onStep: (message) => this.update({ message })
+      this.update({ currentFile: videoPath, message: "Checking video format", nextRunAt: null });
+      const prepared = await this.mediaPreparer(videoPath, this.store.conversionRoot, {
+        onProgress: (message) => this.update({ message })
       });
+      if (prepared.mode === "remuxed") {
+        await this.log("info", `Prepared ${path.basename(videoPath)} without re-encoding.`, { filePath: videoPath });
+      } else if (prepared.mode === "transcoded") {
+        await this.log("info", `Converted ${path.basename(videoPath)} to a high-quality Instagram MP4.`, { filePath: videoPath });
+      }
+
+      try {
+        this.update({ message: "Opening Chrome" });
+        const handle = await this.chrome.open(settings.profileId);
+        await this.publisher({
+          page: handle.page,
+          videoPath: prepared.path,
+          thumbnailPath: settings.thumbnailPath,
+          caption: settings.caption,
+          screenshotRoot: this.store.screenshotRoot,
+          onStep: (message) => this.update({ message })
+        });
+      } finally {
+        if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
+      }
 
       await this.store.addHistory({
         status: "posted",
@@ -122,15 +138,16 @@ class AutomationRunner {
       });
       await this.log("success", `Posted ${path.basename(videoPath)}.`, { filePath: videoPath });
 
-      if (settings.trashAfterPosting) {
-        try {
-          await this.trashItem(videoPath);
-          await this.log("info", `Moved ${path.basename(videoPath)} to Trash.`, { filePath: videoPath });
-        } catch (error) {
-          await this.log("warning", `Posted successfully, but could not move the file to Trash: ${error.message}`, {
-            filePath: videoPath
-          });
-        }
+      try {
+        const destination = await this.postedMover(videoPath);
+        await this.log("info", `Moved ${path.basename(videoPath)} to the posted folder.`, {
+          filePath: videoPath,
+          destination
+        });
+      } catch (error) {
+        await this.log("warning", `Posted successfully, but could not move the file to the posted folder: ${error.message}`, {
+          filePath: videoPath
+        });
       }
 
       if (this.stopRequested) break;

@@ -95,7 +95,7 @@ if (!singleInstance) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
@@ -128,7 +128,6 @@ if (!singleInstance) {
     runner = new AutomationRunner({
       store,
       chrome,
-      trashItem: (filePath) => shell.trashItem(filePath),
       emit: (type, payload) => send(`automation:${type}`, payload)
     });
 

@@ -4,7 +4,7 @@ const elements = Object.fromEntries(
   [
     "statusDot", "statusTitle", "countdown", "notice", "profileSelect", "openLoginButton",
     "addProfileButton", "removeProfileButton", "intervalInput", "folderPath", "folderButton",
-    "thumbnailPath", "thumbnailButton", "captionInput", "captionCount", "trashToggle",
+    "thumbnailPath", "thumbnailButton", "captionInput", "captionCount",
     "runMessage", "queueCount", "currentFileBlock", "currentFile", "startButton", "stopButton",
     "activityList", "openDiagnosticsButton", "clearLogButton", "profileDialog", "profileForm", "profileNameInput",
     "profileError", "createProfileButton"
@@ -21,8 +21,7 @@ function settingsFromForm() {
     videoFolder: elements.folderPath.value,
     thumbnailPath: elements.thumbnailPath.value,
     caption: elements.captionInput.value,
-    intervalMinutes: Number(elements.intervalInput.value),
-    trashAfterPosting: elements.trashToggle.checked
+    intervalMinutes: Number(elements.intervalInput.value)
   };
 }
 
@@ -63,7 +62,7 @@ function renderStatus(status) {
   elements.removeProfileButton.disabled = Boolean(status.running) || !elements.profileSelect.value;
   elements.addProfileButton.disabled = Boolean(status.running);
 
-  const controls = [elements.profileSelect, elements.intervalInput, elements.folderButton, elements.thumbnailButton, elements.captionInput, elements.trashToggle];
+  const controls = [elements.profileSelect, elements.intervalInput, elements.folderButton, elements.thumbnailButton, elements.captionInput];
   controls.forEach((control) => { control.disabled = Boolean(status.running); });
 
   if (status.currentFile) {
@@ -142,7 +141,6 @@ elements.profileSelect.addEventListener("change", async () => {
 });
 elements.intervalInput.addEventListener("change", saveQuietly);
 elements.captionInput.addEventListener("change", saveQuietly);
-elements.trashToggle.addEventListener("change", saveQuietly);
 
 elements.addProfileButton.addEventListener("click", () => {
   elements.profileNameInput.value = "";
@@ -231,7 +229,6 @@ async function initialize() {
     elements.captionInput.value = data.settings.caption;
     elements.captionCount.textContent = `${data.settings.caption.length} / 2200`;
     elements.intervalInput.value = data.settings.intervalMinutes;
-    elements.trashToggle.checked = data.settings.trashAfterPosting;
     data.history.slice(0, 20).reverse().forEach((entry) => appendLog({
       at: entry.createdAt,
       level: "success",

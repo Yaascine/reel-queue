@@ -17,6 +17,7 @@ async function fixture() {
   const logs = [];
   const store = {
     screenshotRoot: root,
+    conversionRoot: path.join(root, "conversions"),
     getProfile: async (id) => (id === "profile-1" ? { id, name: "Test" } : null),
     saveSettings: async (settings) => settings,
     hasSuccessfulPost: async (profileId, filePath) =>
@@ -41,8 +42,7 @@ async function fixture() {
       videoFolder: root,
       thumbnailPath,
       caption: "Caption",
-      intervalMinutes: 1,
-      trashAfterPosting: true
+      intervalMinutes: 1
     }
   };
 }
@@ -55,36 +55,41 @@ async function waitUntilStopped(runner) {
   assert.equal(runner.running, false, "runner should stop within the test timeout");
 }
 
-test("does not trash or record a video without positive confirmation", async (t) => {
+test("does not move or record a video without positive confirmation", async (t) => {
   const data = await fixture();
   t.after(() => fs.rm(data.root, { recursive: true, force: true }));
-  let trashCalls = 0;
+  let moveCalls = 0;
   const runner = new AutomationRunner({
     store: data.store,
     chrome: { open: async () => ({ page: {} }) },
-    trashItem: async () => { trashCalls += 1; },
     emit: () => {},
-    publisher: async () => { throw new ConfirmationError("No confirmation"); }
+    publisher: async () => { throw new ConfirmationError("No confirmation"); },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => { moveCalls += 1; }
   });
 
   await runner.start(data.settings);
   await waitUntilStopped(runner);
 
-  assert.equal(trashCalls, 0);
+  assert.equal(moveCalls, 0);
   assert.equal(data.history.length, 0);
   assert.equal(runner.getStatus().mode, "error");
 });
 
-test("records success before moving a posted video to Trash", async (t) => {
+test("records success before moving a video to the posted folder", async (t) => {
   const data = await fixture();
   t.after(() => fs.rm(data.root, { recursive: true, force: true }));
   const events = [];
   const runner = new AutomationRunner({
     store: data.store,
     chrome: { open: async () => ({ page: {} }) },
-    trashItem: async (filePath) => events.push(["trash", filePath]),
     emit: () => {},
-    publisher: async () => ({ confirmed: true })
+    publisher: async () => ({ confirmed: true }),
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async (filePath) => {
+      events.push(["posted-folder", filePath]);
+      return path.join(path.dirname(filePath), "posted", path.basename(filePath));
+    }
   });
   const originalAddHistory = data.store.addHistory;
   data.store.addHistory = async (entry) => {
@@ -97,7 +102,7 @@ test("records success before moving a posted video to Trash", async (t) => {
 
   assert.deepEqual(events, [
     ["history", data.videoPath],
-    ["trash", data.videoPath]
+    ["posted-folder", data.videoPath]
   ]);
   assert.equal(data.history.length, 1);
   assert.equal(runner.getStatus().mode, "complete");

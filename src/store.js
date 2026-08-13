@@ -12,11 +12,13 @@ class AppStore {
     this.logPath = path.join(rootDirectory, "activity.jsonl");
     this.profileRoot = path.join(rootDirectory, "browser-profiles");
     this.screenshotRoot = path.join(rootDirectory, "screenshots");
+    this.conversionRoot = path.join(rootDirectory, "conversions");
   }
 
   async initialize() {
     await fs.mkdir(this.profileRoot, { recursive: true });
     await fs.mkdir(this.screenshotRoot, { recursive: true });
+    await fs.mkdir(this.conversionRoot, { recursive: true });
     await this.ensureJson(this.settingsPath, normalizeSettings());
     await this.ensureJson(this.profilesPath, []);
     await this.ensureJson(this.historyPath, []);

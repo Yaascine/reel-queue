@@ -1,4 +1,8 @@
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v"]);
+const VIDEO_EXTENSIONS = new Set([
+  ".3g2", ".3gp", ".asf", ".avi", ".divx", ".dv", ".f4v", ".flv", ".m2ts", ".m2v",
+  ".m4v", ".mkv", ".mov", ".mp4", ".mpe", ".mpeg", ".mpg", ".mts", ".mxf", ".ogv",
+  ".qt", ".rm", ".rmvb", ".ts", ".vob", ".webm", ".wmv", ".y4m"
+]);
 
 function normalizeSettings(input = {}) {
   const interval = Number(input.intervalMinutes);
@@ -7,8 +11,7 @@ function normalizeSettings(input = {}) {
     videoFolder: typeof input.videoFolder === "string" ? input.videoFolder : "",
     thumbnailPath: typeof input.thumbnailPath === "string" ? input.thumbnailPath : "",
     caption: typeof input.caption === "string" ? input.caption.slice(0, 2200) : "",
-    intervalMinutes: Number.isFinite(interval) ? Math.min(1440, Math.max(1, interval)) : 20,
-    trashAfterPosting: input.trashAfterPosting !== false
+    intervalMinutes: Number.isFinite(interval) ? Math.min(1440, Math.max(1, interval)) : 20
   };
 }
 

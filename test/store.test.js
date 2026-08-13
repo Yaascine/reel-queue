@@ -22,8 +22,7 @@ test("persists settings and separate account profiles", async (t) => {
     videoFolder: "/videos",
     thumbnailPath: "/cover.jpg",
     caption: "Hello",
-    intervalMinutes: 3,
-    trashAfterPosting: true
+    intervalMinutes: 3
   });
   assert.deepEqual(await store.getSettings(), saved);
 });

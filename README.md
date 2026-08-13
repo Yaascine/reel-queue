@@ -14,7 +14,7 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 
 - Instagram passwords are never stored by Reel Queue. Each account profile has a separate Chrome session directory.
 - Account switching is manual. The app does not rotate profiles automatically when Instagram restricts an account.
-- A source video is moved to the operating system Trash or Recycle Bin only after Instagram displays a positive sharing confirmation.
+- A source video is moved into a `posted` subfolder only after Instagram displays a positive sharing confirmation. The folder is created automatically.
 - When confirmation is missing, the source video remains untouched and a screenshot is saved in the application's data directory.
 - A matching JSON diagnostic is saved beside each failure screenshot. Use **Open diagnostics** in the Activity panel to inspect it.
 - Stop requests finish the current browser action safely, then prevent the next upload.
@@ -47,7 +47,9 @@ In the app:
 3. Return to Reel Queue and choose the video folder, thumbnail, caption, and interval.
 4. Click **Start queue**.
 
-Videos are processed in natural filename order. Supported extensions are MP4, MOV, and M4V.
+Videos are processed in natural filename order. MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common video containers are supported.
+
+The bundled FFmpeg converter checks each file before upload. H.264/AAC sources in MKV or another container are remuxed into MP4 with stream copy, so their audio and video quality is unchanged. Sources using codecs Instagram cannot accept are converted to H.264/AAC at a high-quality CRF 16 setting. The temporary MP4 is removed after the upload attempt; the original is never modified by conversion.
 
 ## Build clickable applications
 

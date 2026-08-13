@@ -5,6 +5,8 @@ const { isSupportedVideo, naturalCompare, normalizeSettings, safeProfileName } =
 test("recognizes supported video extensions without case sensitivity", () => {
   assert.equal(isSupportedVideo("clip.MP4"), true);
   assert.equal(isSupportedVideo("clip.mov"), true);
+  assert.equal(isSupportedVideo("clip.MKV"), true);
+  assert.equal(isSupportedVideo("clip.webm"), true);
   assert.equal(isSupportedVideo("thumbnail.jpg"), false);
 });
 
