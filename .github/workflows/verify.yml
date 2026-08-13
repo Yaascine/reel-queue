@@ -29,11 +29,11 @@ jobs:
         run: npm run dist:win
       - name: Verify packaged FFmpeg on macOS
         if: runner.os == 'macOS'
-        run: find release -path '*ffmpeg-static/ffmpeg' -type f -exec {} -version \;
+        run: '& "release/mac-arm64/Reel Queue.app/Contents/Resources/ffmpeg/ffmpeg" -version'
       - name: Verify packaged FFmpeg on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '& "release/win-unpacked/resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg.exe" -version'
+        run: '& "release/win-unpacked/resources/ffmpeg/ffmpeg.exe" -version'
       - uses: actions/upload-artifact@v4
         with:
           name: reel-queue-${{ runner.os }}
