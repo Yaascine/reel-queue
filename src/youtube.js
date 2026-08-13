@@ -7,6 +7,7 @@ const {
   waitForAttachedInput,
   captureFailure
 } = require("./instagram");
+const { setVideoInputFile } = require("./file-upload");
 
 const DEFAULT_BASE_URL = "https://studio.youtube.com";
 
@@ -97,8 +98,14 @@ async function publishYouTubeShort({
     const videoInput = await openUpload(page, baseUrl);
 
     stage = "selecting the video";
-    onStep("Selecting the YouTube Short");
-    await videoInput.setInputFiles(videoPath);
+    onStep("Loading the video into YouTube (large files can take several minutes)");
+    await setVideoInputFile(videoInput, videoPath, {
+      platform: "YouTube",
+      isAccepted: async () => Boolean(await firstVisible([
+        page.locator('#title-textarea #textbox'),
+        page.locator('[aria-label*="title" i][contenteditable="true"]')
+      ], 300))
+    });
 
     stage = "adding video details";
     onStep("Adding YouTube details");

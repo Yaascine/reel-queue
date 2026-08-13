@@ -1,5 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { VIDEO_FILE_SELECTION_TIMEOUT, setVideoInputFile } = require("./file-upload");
 
 const DEFAULT_BASE_URL = "https://www.instagram.com";
 
@@ -125,8 +126,16 @@ async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
   return input;
 }
 
-async function setVideoFile(input, videoPath) {
-  await input.setInputFiles(videoPath);
+async function setVideoFile(input, videoPath, page) {
+  return setVideoInputFile(input, videoPath, {
+    platform: "Instagram",
+    isAccepted: page
+      ? async () => Boolean(await firstVisible([
+        ...namedLocators(page, ["Select crop", "Crop", "Change aspect ratio"]),
+        page.locator('[role="dialog"] video, [role="dialog"] button:has-text("Next")')
+      ], 300))
+      : undefined
+  });
 }
 
 async function setOriginalAspectRatio(page) {
@@ -258,8 +267,8 @@ async function publishReel({
     const videoInput = await openComposer(page, baseUrl);
 
     stage = "selecting the video";
-    onStep("Selecting the video");
-    await setVideoFile(videoInput, videoPath);
+    onStep("Loading the video into Instagram (large files can take several minutes)");
+    await setVideoFile(videoInput, videoPath, page);
 
     const formatDialog = await firstVisible(namedLocators(page, ["OK", "Continue"]), 2_000);
     if (formatDialog) await formatDialog.click();
@@ -318,6 +327,7 @@ async function publishReel({
 
 module.exports = {
   DEFAULT_BASE_URL,
+  VIDEO_FILE_SELECTION_TIMEOUT,
   LoginRequiredError,
   ConfirmationError,
   firstVisible,
@@ -328,6 +338,7 @@ module.exports = {
   captureFailure,
   openComposer,
   publishReel,
+  setVideoFile,
   setOriginalAspectRatio,
   setCoverFile,
   waitForPositiveConfirmation

@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { chromium } = require("playwright-core");
 const { findChrome } = require("../src/chrome");
-const { publishReel } = require("../src/instagram");
+const { publishReel, setVideoFile, VIDEO_FILE_SELECTION_TIMEOUT } = require("../src/instagram");
 
 const mockInstagram = `<!doctype html>
 <html lang="en">
@@ -87,6 +87,22 @@ const mockInstagram = `<!doctype html>
     </script>
   </body>
 </html>`;
+
+test("allows five minutes for Instagram to accept a large video", async () => {
+  let received;
+  const input = {
+    async setInputFiles(videoPath, options) {
+      received = { videoPath, options };
+    }
+  };
+
+  await setVideoFile(input, "large-video.mkv");
+  assert.deepEqual(received, {
+    videoPath: "large-video.mkv",
+    options: { timeout: VIDEO_FILE_SELECTION_TIMEOUT }
+  });
+  assert.equal(VIDEO_FILE_SELECTION_TIMEOUT, 300_000);
+});
 
 test("publishes through the current two-step edit and caption flow", { skip: !findChrome() }, async (t) => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-instagram-e2e-"));

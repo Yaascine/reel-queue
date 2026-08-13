@@ -7,6 +7,7 @@ const {
   waitForAttachedInput,
   captureFailure
 } = require("./instagram");
+const { setVideoInputFile } = require("./file-upload");
 
 const DEFAULT_BASE_URL = "https://www.tiktok.com/tiktokstudio/upload?lang=en";
 
@@ -123,13 +124,20 @@ async function publishTikTok({
     await assertTikTokLogin(page);
 
     stage = "selecting the video";
-    onStep("Selecting the TikTok video");
+    onStep("Loading the video into TikTok (large files can take several minutes)");
     const input = await waitForVideoInput(page);
     if (!input) {
       await assertTikTokLogin(page);
       throw new Error("TikTok Studio did not provide a video selector.");
     }
-    await input.setInputFiles(videoPath);
+    await setVideoInputFile(input, videoPath, {
+      platform: "TikTok",
+      isAccepted: async () => Boolean(await firstVisible([
+        page.getByRole("textbox", { name: /caption|description/i }),
+        page.locator('textarea[placeholder*="caption" i], textarea[placeholder*="description" i]'),
+        ...namedLocators(page, ["Post", "Publish"])
+      ], 300))
+    });
 
     stage = "adding the caption";
     onStep("Adding TikTok details");
