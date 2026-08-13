@@ -55,6 +55,20 @@ async function waitForDebugging(port, child, timeout = 20_000) {
   throw new Error("Chrome opened but its local automation connection did not become ready.");
 }
 
+async function stopChrome(handle) {
+  await handle.browser.close().catch(() => {});
+  if (handle.chromeProcess.exitCode !== null) return;
+  handle.chromeProcess.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => handle.chromeProcess.once("exit", resolve)),
+    new Promise((resolve) => setTimeout(resolve, 3_000))
+  ]);
+  if (handle.chromeProcess.exitCode === null) {
+    handle.chromeProcess.kill("SIGKILL");
+    await new Promise((resolve) => handle.chromeProcess.once("exit", resolve));
+  }
+}
+
 class ChromeManager {
   constructor(store, onLog) {
     this.store = store;
@@ -123,18 +137,16 @@ class ChromeManager {
   async close(profileId) {
     const handle = this.contexts.get(profileId);
     if (!handle) return;
-    await handle.browser.close().catch(() => {});
-    if (handle.chromeProcess.exitCode === null) handle.chromeProcess.kill();
+    await stopChrome(handle);
     this.contexts.delete(profileId);
   }
 
   async closeAll() {
     const contexts = [...this.contexts.values()].map(async (handle) => {
-      await handle.browser.close().catch(() => {});
-      if (handle.chromeProcess.exitCode === null) handle.chromeProcess.kill();
+      await stopChrome(handle);
     });
     await Promise.all(contexts);
   }
 }
 
-module.exports = { ChromeManager, findChrome };
+module.exports = { ChromeManager, findChrome, stopChrome };

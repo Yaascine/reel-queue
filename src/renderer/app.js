@@ -27,8 +27,17 @@ const lastWorkspaceByPlatform = {};
 let countdownTimer;
 
 function platformName() { return platformNames[activePlatform]; }
+function platformAccountLabel() { return activePlatform === "instagram" ? "an Instagram" : `a ${platformName()}`; }
 function platformWorkspaces() { return workspaces.filter((workspace) => workspace.platform === activePlatform); }
-function platformProfiles() { return profiles.filter((profile) => profile.platform === activePlatform); }
+function platformProfiles() {
+  const reservedElsewhere = new Set(
+    workspaces
+      .filter((workspace) => workspace.platform === activePlatform && workspace.id !== activeWorkspaceId)
+      .map((workspace) => workspace.settings.profileId)
+      .filter(Boolean)
+  );
+  return profiles.filter((profile) => profile.platform === activePlatform && !reservedElsewhere.has(profile.id));
+}
 function activeWorkspace() { return workspaces.find((workspace) => workspace.id === activeWorkspaceId) || null; }
 function activeStatus() { return statuses[activeWorkspaceId] || idleStatus(activeWorkspaceId, activePlatform); }
 
@@ -108,7 +117,7 @@ function renderProfiles(selectedId = "") {
   const status = activeStatus();
   const available = platformProfiles();
   elements.profileSelect.replaceChildren();
-  elements.profileSelect.append(new Option(available.length ? `Choose a ${platformName()} account` : "Add an account profile", ""));
+  elements.profileSelect.append(new Option(available.length ? `Choose ${platformAccountLabel()} account` : "Add an account profile", ""));
   available.forEach((profile) => elements.profileSelect.append(new Option(profile.name, profile.id)));
   if (selectedId && available.some((profile) => profile.id === selectedId)) elements.profileSelect.value = selectedId;
   elements.removeProfileButton.disabled = !elements.profileSelect.value || status.running;
@@ -288,14 +297,16 @@ elements.profileSelect.addEventListener("change", async () => { renderProfiles(e
 elements.addWorkspaceButton.addEventListener("click", () => {
   elements.workspaceNameInput.value = "";
   elements.workspaceError.hidden = true;
-  elements.workspaceDialogCopy.textContent = `Each queue can use a different ${platformName()} account and content folder.`;
+  elements.workspaceDialogCopy.textContent = `This queue will create a fresh ${platformName()} account session with no cookies or login from another queue.`;
   elements.workspaceDialog.showModal();
   elements.workspaceNameInput.focus();
 });
 elements.createWorkspaceButton.addEventListener("click", async () => {
   elements.workspaceError.hidden = true;
   try {
-    const workspace = await api.createWorkspace(activePlatform, elements.workspaceNameInput.value);
+    const created = await api.createWorkspace(activePlatform, elements.workspaceNameInput.value);
+    const workspace = created.workspace;
+    profiles.push(created.profile);
     workspace.activity = [];
     workspaces.push(workspace);
     statuses[workspace.id] = idleStatus(workspace.id, activePlatform);
@@ -304,6 +315,12 @@ elements.createWorkspaceButton.addEventListener("click", async () => {
     elements.workspaceDialog.close();
     renderTabs();
     populateForm();
+    try {
+      await api.openLogin(created.profile.id, activePlatform);
+      showNotice(`Fresh ${platformName()} Chrome session opened for ${workspace.name}. Sign in there once.`, "info");
+    } catch (error) {
+      showNotice(`The fresh account session was created, but Chrome could not open: ${errorMessage(error)}`);
+    }
   } catch (error) { elements.workspaceError.textContent = errorMessage(error); elements.workspaceError.hidden = false; }
 });
 elements.removeWorkspaceButton.addEventListener("click", async () => {
@@ -335,7 +352,8 @@ elements.createProfileButton.addEventListener("click", async () => {
     renderProfiles(profile.id);
     await saveQuietly();
     elements.profileDialog.close();
-    showNotice(`Profile created. Open ${platformName()} login and sign in once.`, "info");
+    await api.openLogin(profile.id, activePlatform);
+    showNotice(`Fresh ${platformName()} Chrome session opened. Sign in there once.`, "info");
   } catch (error) { elements.profileError.textContent = errorMessage(error); elements.profileError.hidden = false; }
 });
 elements.removeProfileButton.addEventListener("click", async () => {

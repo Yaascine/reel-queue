@@ -2,7 +2,7 @@
 
 Reel Queue is a local macOS and Windows app that uses visible Google Chrome sessions to queue Instagram Reels, YouTube Shorts, and TikTok videos.
 
-Instagram, YouTube, and TikTok are separate top-level sections. Every platform can have multiple independent queue tabs, and every queue has its own account profile, video directory, metadata, timer, activity log, and start/stop controls. Queues with different profiles can run at the same time, including across platforms.
+Instagram, YouTube, and TikTok are separate top-level sections. Every platform can have multiple independent queue tabs, and every queue has its own account profile, empty Chrome data directory, video directory, metadata, timer, activity log, and start/stop controls. Adding a queue automatically creates and selects its fresh account session; profiles already assigned to another queue are not offered for reuse. Queues can run at the same time, including across platforms.
 
 ## Download
 

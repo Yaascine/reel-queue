@@ -100,9 +100,39 @@ class AppStore {
 
     const rawProfiles = await this.readJson(this.profilesPath, []);
     const profiles = rawProfiles.map((profile) => profile.platform ? profile : { ...profile, platform: "instagram" });
-    if (profiles.some((profile, index) => profile !== rawProfiles[index])) {
-      await this.writeJson(this.profilesPath, profiles);
+    let profilesChanged = profiles.some((profile, index) => profile !== rawProfiles[index]);
+    const usedProfileIds = new Set();
+    for (const workspace of workspaces) {
+      const assigned = profiles.find((profile) => profile.id === workspace.settings.profileId);
+      const usable = assigned && assigned.platform === workspace.platform && !usedProfileIds.has(assigned.id);
+      if (usable) {
+        usedProfileIds.add(assigned.id);
+        await fs.mkdir(this.getProfileDirectory(assigned.id), { recursive: true });
+        continue;
+      }
+
+      const baseName = safeProfileName(`${workspace.name} account`) || "New account";
+      let profileName = baseName;
+      let suffix = 2;
+      while (profiles.some((profile) => profile.platform === workspace.platform && profile.name.toLowerCase() === profileName.toLowerCase())) {
+        profileName = safeProfileName(`${baseName} ${suffix}`);
+        suffix += 1;
+      }
+      const profile = {
+        id: crypto.randomUUID(),
+        name: profileName,
+        platform: workspace.platform,
+        createdAt: new Date().toISOString()
+      };
+      profiles.push(profile);
+      usedProfileIds.add(profile.id);
+      workspace.settings.profileId = profile.id;
+      await fs.mkdir(this.getProfileDirectory(profile.id), { recursive: true });
+      profilesChanged = true;
+      changed = true;
     }
+    if (profilesChanged) await this.writeJson(this.profilesPath, profiles);
+    if (changed) await this.writeJson(this.workspacesPath, workspaces);
   }
 
   async getSettings() {
@@ -154,6 +184,54 @@ class AppStore {
       workspaces.push(workspace);
       await this.writeJson(this.workspacesPath, workspaces);
       return workspace;
+    });
+  }
+
+  async createWorkspaceWithProfile(platform, name) {
+    const normalizedPlatform = normalizePlatform(platform);
+    const cleanName = safeWorkspaceName(name);
+    if (!cleanName) throw new Error("Enter a queue name.");
+
+    return this.queueWrite(this.workspacesPath, async () => {
+      const workspaces = await this.listWorkspaces();
+      if (workspaces.some((workspace) => workspace.platform === normalizedPlatform && workspace.name.toLowerCase() === cleanName.toLowerCase())) {
+        throw new Error("A queue with that name already exists.");
+      }
+
+      const profiles = await this.listProfiles();
+      const baseProfileName = safeProfileName(`${cleanName} account`) || "New account";
+      let profileName = baseProfileName;
+      let suffix = 2;
+      while (profiles.some((profile) => profile.platform === normalizedPlatform && profile.name.toLowerCase() === profileName.toLowerCase())) {
+        profileName = safeProfileName(`${baseProfileName} ${suffix}`);
+        suffix += 1;
+      }
+
+      const profile = {
+        id: crypto.randomUUID(),
+        name: profileName,
+        platform: normalizedPlatform,
+        createdAt: new Date().toISOString()
+      };
+      const workspace = {
+        id: crypto.randomUUID(),
+        name: cleanName,
+        platform: normalizedPlatform,
+        createdAt: new Date().toISOString(),
+        settings: normalizeSettings({ profileId: profile.id }, normalizedPlatform)
+      };
+
+      const profileDirectory = this.getProfileDirectory(profile.id);
+      await fs.mkdir(profileDirectory, { recursive: false });
+      try {
+        await this.writeJson(this.profilesPath, [...profiles, profile]);
+        await this.writeJson(this.workspacesPath, [...workspaces, workspace]);
+      } catch (error) {
+        await fs.rm(profileDirectory, { recursive: true, force: true }).catch(() => {});
+        await this.writeJson(this.profilesPath, profiles).catch(() => {});
+        throw error;
+      }
+      return { workspace, profile };
     });
   }
 

@@ -66,7 +66,7 @@ function registerIpc() {
     return result.canceled ? "" : result.filePaths[0];
   });
 
-  ipcMain.handle("workspaces:create", (_event, platform, name) => store.createWorkspace(platform, name));
+  ipcMain.handle("workspaces:create", (_event, platform, name) => store.createWorkspaceWithProfile(platform, name));
   ipcMain.handle("workspaces:save", (_event, id, settings) => store.saveWorkspaceSettings(id, settings));
   ipcMain.handle("workspaces:remove", (_event, id) => automation.remove(id));
   ipcMain.handle("app:open-diagnostics", () => shell.openPath(store.screenshotRoot));
@@ -88,6 +88,8 @@ function registerIpc() {
   });
   ipcMain.handle("profiles:open-login", async (_event, id, platform) => {
     if (automation.isProfileRunning(id)) throw new Error("This account is currently posting. Stop its queue before opening login.");
+    const profile = await store.getProfile(id);
+    if (!profile || profile.platform !== platform) throw new Error("Choose an account profile for this platform.");
     return chrome.openLogin(id, platform);
   });
   ipcMain.handle("automation:start", (_event, workspaceId, settings) => automation.start(workspaceId, settings));
