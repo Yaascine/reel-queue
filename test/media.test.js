@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const ffmpegPath = require("ffmpeg-static");
-const { inspectMedia, moveToPosted, prepareVideo, runFfmpeg } = require("../src/media");
+const { inspectMedia, moveToPosted, prepareVideo, resolveFfmpegPath, runFfmpeg } = require("../src/media");
 
 async function temporaryRoot(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-media-"));
@@ -19,6 +19,23 @@ async function makeVideo(outputPath, videoCodec, audioCodec) {
     "-shortest", "-c:v", videoCodec, "-pix_fmt", "yuv420p", "-c:a", audioCodec, outputPath
   ], { ffmpegPath });
 }
+
+test("resolves packaged FFmpeg from the platform resources directory", () => {
+  assert.equal(
+    resolveFfmpegPath("/app/resources/app.asar/node_modules/ffmpeg-static/ffmpeg", {
+      resourcesPath: "/app/resources",
+      platform: "darwin"
+    }),
+    path.join("/app/resources", "ffmpeg", "ffmpeg")
+  );
+  assert.equal(
+    resolveFfmpegPath("/app/resources/app.asar/node_modules/ffmpeg-static/ffmpeg.exe", {
+      resourcesPath: "/app/resources",
+      platform: "win32"
+    }),
+    path.join("/app/resources", "ffmpeg", "ffmpeg.exe")
+  );
+});
 
 test("remuxes compatible MKV streams to MP4 without re-encoding", async (t) => {
   const root = await temporaryRoot(t);

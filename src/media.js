@@ -4,8 +4,14 @@ const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const bundledFfmpegPath = require("ffmpeg-static");
 
-function resolveFfmpegPath(candidate = bundledFfmpegPath) {
+function resolveFfmpegPath(
+  candidate = bundledFfmpegPath,
+  { resourcesPath = process.resourcesPath, platform = process.platform } = {}
+) {
   if (!candidate) throw new Error("The bundled video converter is unavailable.");
+  if (candidate.includes("app.asar") && resourcesPath) {
+    return path.join(resourcesPath, "ffmpeg", platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+  }
   return candidate.includes("app.asar") ? candidate.replace("app.asar", "app.asar.unpacked") : candidate;
 }
 
