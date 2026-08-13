@@ -20,7 +20,7 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 4. Choose that queue's video folder, content details, visibility where available, and interval.
 5. Start the queue. Switch platform sections or queue tabs to configure and run others.
 
-Instagram queues use a caption and thumbnail, and explicitly select Instagram's **Original** crop. YouTube queues use a title, description, visibility, and audience setting. YouTube Shorts are accepted only when square or vertical and no longer than three minutes. TikTok queues use a caption and audience setting.
+Instagram queues use a shared caption and thumbnail, and explicitly select Instagram's **Original** crop. YouTube Short titles come from each source filename with only the final extension removed and are safely trimmed to YouTube's 100-character limit. TikTok captions come from each source filename with only the final extension removed. YouTube and TikTok receive no custom thumbnail, allowing each platform to select a frame from the video. Both platforms default to public visibility, while their queue visibility controls remain available. YouTube Shorts are accepted only when square or vertical and no longer than three minutes.
 
 ## Files and safety
 

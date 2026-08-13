@@ -44,7 +44,14 @@ async function openUpload(page, baseUrl) {
 
   const upload = await firstVisible(namedLocators(page, ["Upload videos", "Upload video"]), 10_000);
   if (!upload) throw new Error("YouTube Studio control not found: Upload videos.");
-  await upload.click();
+  const menuUpload = await firstVisible(
+    [
+      page.getByRole("menuitem", { name: /^\s*Upload videos?\s*$/i }),
+      page.locator('tp-yt-paper-item[role="menuitem"]:has-text("Upload videos")')
+    ],
+    2_000
+  );
+  await (menuUpload || upload).click();
 
   input = await waitForAttachedInput(page, ['input[type="file"][accept*="video" i]', 'input[type="file"]'], 15_000);
   if (!input) throw new Error("YouTube Studio opened the upload dialog but did not provide a video selector.");

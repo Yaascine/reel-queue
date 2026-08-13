@@ -1,3 +1,5 @@
+const path = require("node:path");
+
 const VIDEO_EXTENSIONS = new Set([
   ".3g2", ".3gp", ".asf", ".avi", ".divx", ".dv", ".f4v", ".flv", ".m2ts", ".m2v",
   ".m4v", ".mkv", ".mov", ".mp4", ".mpe", ".mpeg", ".mpg", ".mts", ".mxf", ".ogv",
@@ -48,6 +50,14 @@ function naturalCompare(left, right) {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
 }
 
+function videoTitleFromPath(filePath, maximumLength = null) {
+  const filename = path.basename(String(filePath || "").replace(/\\/g, "/"));
+  const extension = path.extname(filename);
+  const stem = filename.slice(0, filename.length - extension.length).trim() || "Untitled video";
+  if (!Number.isFinite(maximumLength) || maximumLength < 1) return stem;
+  return Array.from(stem).slice(0, maximumLength).join("").trimEnd();
+}
+
 function safeProfileName(value) {
   return String(value || "")
     .trim()
@@ -69,6 +79,7 @@ module.exports = {
   normalizeSettings,
   isSupportedVideo,
   naturalCompare,
+  videoTitleFromPath,
   safeProfileName,
   safeWorkspaceName
 };

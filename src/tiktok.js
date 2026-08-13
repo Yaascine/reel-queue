@@ -78,6 +78,33 @@ async function choosePrivacy(page, privacy) {
   await option.click();
 }
 
+async function waitForPostConfirmation(page, caption, privacy, timeout = 180_000) {
+  const deadline = Date.now() + timeout;
+  const expectedPrivacy = { public: /everyone|public/i, friends: /friends/i, private: /only you|private/i }[privacy] || /everyone|public/i;
+  while (Date.now() < deadline) {
+    const confirmation = await firstVisible(
+      [
+        page.getByText(/your video (has been|was) (uploaded|posted|published)/i),
+        page.getByText(/video (uploaded|posted|published) successfully/i),
+        page.getByText(/post (submitted|published) successfully/i)
+      ],
+      750
+    );
+    if (confirmation) return true;
+
+    if (/\/tiktokstudio\/content/i.test(page.url())) {
+      const title = page.getByText(caption, { exact: true }).first();
+      if (await title.isVisible({ timeout: 750 }).catch(() => false)) {
+        const row = title.locator('xpath=ancestor::div[@height="100px"]').first();
+        const rowText = await row.innerText().catch(() => "");
+        if (expectedPrivacy.test(rowText)) return true;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
 async function publishTikTok({
   page,
   videoPath,
@@ -115,19 +142,23 @@ async function publishTikTok({
     onStep("Posting to TikTok");
     const post = await firstVisible(namedLocators(page, ["Post", "Publish"]), 120_000);
     if (!post) throw new Error("TikTok Studio post control was not found.");
+    await post.waitFor({ state: "visible", timeout: 120_000 });
+    const readyDeadline = Date.now() + 180_000;
+    while (Date.now() < readyDeadline) {
+      const disabled = await post.getAttribute("aria-disabled");
+      const nativeDisabled = await post.isDisabled().catch(() => false);
+      if (disabled !== "true" && !nativeDisabled) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    if ((await post.getAttribute("aria-disabled")) === "true" || (await post.isDisabled().catch(() => false))) {
+      throw new Error("TikTok finished uploading the video but did not enable the Post button.");
+    }
     await post.click();
     await clickIfVisible(page, ["Post now", "Post anyway", "Confirm"], 5_000);
 
     stage = "waiting for TikTok confirmation";
     onStep("Waiting for TikTok confirmation");
-    const confirmation = await firstVisible(
-      [
-        page.getByText(/your video (has been|was) (uploaded|posted|published)/i),
-        page.getByText(/video (uploaded|posted|published) successfully/i),
-        page.getByText(/post (submitted|published) successfully/i)
-      ],
-      180_000
-    );
+    const confirmation = await waitForPostConfirmation(page, caption, privacy);
     if (!confirmation) {
       throw new ConfirmationError("TikTok did not show a clear post confirmation. The source video was kept to prevent data loss.");
     }
@@ -141,4 +172,4 @@ async function publishTikTok({
   }
 }
 
-module.exports = { DEFAULT_BASE_URL, publishTikTok, assertTikTokLogin, waitForVideoInput, fillCaption, choosePrivacy };
+module.exports = { DEFAULT_BASE_URL, publishTikTok, assertTikTokLogin, waitForVideoInput, fillCaption, choosePrivacy, waitForPostConfirmation };

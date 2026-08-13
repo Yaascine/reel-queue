@@ -46,24 +46,25 @@ async function fixture(t, html, filename) {
   return { page: await browser.newPage(), videoPath, root, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
-test("publishes a YouTube Short through details, audience, and visibility", { skip: !findChrome() }, async (t) => {
-  const data = await fixture(t, youtubePage, "short.mp4");
+test("publishes a filename-titled YouTube Short through details, audience, and visibility", { skip: !findChrome() }, async (t) => {
+  const filenameTitle = "Y".repeat(100);
+  const data = await fixture(t, youtubePage, `${filenameTitle}.mp4`);
   const result = await publishYouTubeShort({
-    page: data.page, videoPath: data.videoPath, title: "Test Short", description: "Test description",
+    page: data.page, videoPath: data.videoPath, title: filenameTitle, description: "Test description",
     privacy: "unlisted", madeForKids: false, screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl
   });
   assert.deepEqual(result, { confirmed: true });
   assert.deepEqual(await data.page.evaluate(() => window.testEvents), [
-    "file:short.mp4", "next:1", "next:2", "next:3", "title:Test Short", "description:Test description", "visibility:unlisted"
+    `file:${filenameTitle}.mp4`, "next:1", "next:2", "next:3", `title:${filenameTitle}`, "description:Test description", "visibility:unlisted"
   ]);
 });
 
-test("publishes a TikTok with an independent caption and audience", { skip: !findChrome() }, async (t) => {
-  const data = await fixture(t, tiktokPage, "tiktok.mp4");
+test("publishes a filename-captioned TikTok with an independent audience", { skip: !findChrome() }, async (t) => {
+  const data = await fixture(t, tiktokPage, "MMA knockout.final.cut.mp4");
   const result = await publishTikTok({
-    page: data.page, videoPath: data.videoPath, caption: "TikTok test", privacy: "friends",
+    page: data.page, videoPath: data.videoPath, caption: "MMA knockout.final.cut", privacy: "friends",
     screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl
   });
   assert.deepEqual(result, { confirmed: true });
-  assert.deepEqual(await data.page.evaluate(() => window.testEvents), ["file:tiktok.mp4", "privacy:friends", "caption:TikTok test"]);
+  assert.deepEqual(await data.page.evaluate(() => window.testEvents), ["file:MMA knockout.final.cut.mp4", "privacy:friends", "caption:MMA knockout.final.cut"]);
 });

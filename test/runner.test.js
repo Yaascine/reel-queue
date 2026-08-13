@@ -127,3 +127,45 @@ test("rejects landscape videos from a YouTube Shorts queue", async (t) => {
   assert.match(runner.getStatus().message, /square or vertical/i);
   assert.equal(data.history.length, 0);
 });
+
+test("uses a trimmed extension-free filename as the YouTube title", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  await fs.rm(data.videoPath);
+  const longStem = `YouTube ${"title ".repeat(20)}`.trim();
+  const videoPath = path.join(data.root, `${longStem}.mkv`);
+  await fs.writeFile(videoPath, "video");
+  let published;
+  const runner = new AutomationRunner({
+    platform: "youtube", store: data.store, chrome: { open: async () => ({ page: {} }) }, emit: () => {},
+    publisher: async (input) => { published = input; return { confirmed: true }; },
+    mediaPreparer: async (source) => ({ path: source, temporary: false, mode: "unchanged", media: { width: 720, height: 1280, durationSeconds: 10 } }),
+    postedMover: async () => "posted"
+  });
+  await runner.start({ ...data.settings, thumbnailPath: "", caption: "", title: "Ignored fixed title" });
+  await waitUntilStopped(runner);
+  assert.equal(published.title, longStem.slice(0, 100).trimEnd());
+  assert.equal(published.title.length, 100);
+  assert.equal(published.thumbnailPath, "");
+  assert.equal(published.privacy, "public");
+});
+
+test("uses the extension-free filename as the TikTok caption", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  await fs.rm(data.videoPath);
+  const videoPath = path.join(data.root, "MMA knockout.final.cut.mp4");
+  await fs.writeFile(videoPath, "video");
+  let published;
+  const runner = new AutomationRunner({
+    platform: "tiktok", store: data.store, chrome: { open: async () => ({ page: {} }) }, emit: () => {},
+    publisher: async (input) => { published = input; return { confirmed: true }; },
+    mediaPreparer: async (source) => ({ path: source, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+  await runner.start({ ...data.settings, thumbnailPath: "", caption: "" });
+  await waitUntilStopped(runner);
+  assert.equal(published.caption, "MMA knockout.final.cut");
+  assert.equal(published.thumbnailPath, "");
+  assert.equal(published.privacy, "public");
+});

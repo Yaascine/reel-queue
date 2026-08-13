@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isSupportedVideo, naturalCompare, normalizeSettings, safeProfileName } = require("../src/shared");
+const { isSupportedVideo, naturalCompare, normalizeSettings, safeProfileName, videoTitleFromPath } = require("../src/shared");
 
 test("recognizes supported video extensions without case sensitivity", () => {
   assert.equal(isSupportedVideo("clip.MP4"), true);
@@ -34,4 +34,12 @@ test("normalizes platform-specific settings", () => {
 test("sanitizes account profile names", () => {
   assert.equal(safeProfileName("  Main\u0000 Account  "), "Main Account");
   assert.equal(safeProfileName("   "), "");
+});
+
+test("derives a title from the filename and trims only when requested", () => {
+  assert.equal(videoTitleFromPath("/clips/Great MMA Knockout.final.mkv"), "Great MMA Knockout.final");
+  assert.equal(videoTitleFromPath("C:\\clips\\Funny Cat.mp4"), "Funny Cat");
+  assert.equal(videoTitleFromPath("/clips/Short title.mp4", 100), "Short title");
+  assert.equal(videoTitleFromPath(`/clips/${"a".repeat(120)}.mp4`, 100), "a".repeat(100));
+  assert.equal(Array.from(videoTitleFromPath(`/clips/${"😀".repeat(105)}.mp4`, 100)).length, 100);
 });

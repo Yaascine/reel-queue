@@ -120,8 +120,8 @@ function configurePlatformFields() {
   elements.setupTitle.textContent = `${name} posting setup`;
   elements.openLoginButton.textContent = `Open ${name} login`;
   elements.thumbnailField.hidden = activePlatform !== "instagram";
-  elements.captionField.hidden = activePlatform === "youtube";
-  elements.youtubeTitleField.hidden = activePlatform !== "youtube";
+  elements.captionField.hidden = activePlatform !== "instagram";
+  elements.youtubeTitleField.hidden = true;
   elements.youtubeDescriptionField.hidden = activePlatform !== "youtube";
   elements.privacyField.hidden = activePlatform === "instagram";
   elements.madeForKidsField.hidden = activePlatform !== "youtube";
@@ -129,13 +129,11 @@ function configurePlatformFields() {
   if (activePlatform === "youtube") {
     elements.privacySelect.replaceChildren(new Option("Public", "public"), new Option("Unlisted", "unlisted"), new Option("Private", "private"));
     elements.privacyHelp.textContent = "The selected visibility is applied to every Short in this queue.";
-    elements.folderHelp.textContent = "Common video formats are converted automatically. Shorts must be square or vertical and no longer than 3 minutes.";
+    elements.folderHelp.textContent = "Each Short title comes from its filename without the extension and is trimmed to 100 characters. YouTube selects a video frame as the thumbnail. Shorts must be square or vertical and no longer than 3 minutes.";
   } else if (activePlatform === "tiktok") {
     elements.privacySelect.replaceChildren(new Option("Public", "public"), new Option("Friends", "friends"), new Option("Only you", "private"));
     elements.privacyHelp.textContent = "The selected audience is applied to every TikTok in this queue.";
-    elements.captionLabel.textContent = "Caption";
-    elements.captionInput.placeholder = "Write the caption used for every TikTok";
-    elements.folderHelp.textContent = "MKV and other common formats are converted automatically before upload.";
+    elements.folderHelp.textContent = "Each TikTok caption comes from its filename without the extension. TikTok selects a video frame as the cover. MKV and other common formats are converted automatically.";
   } else {
     elements.captionLabel.textContent = "Caption";
     elements.captionInput.placeholder = "Write the caption used for every Reel";

@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { isSupportedVideo, naturalCompare, normalizeSettings } = require("./shared");
+const { isSupportedVideo, naturalCompare, normalizeSettings, videoTitleFromPath } = require("./shared");
 const { publishReel } = require("./instagram");
 const { moveToPosted, prepareVideo } = require("./media");
 
@@ -50,8 +50,7 @@ class AutomationRunner {
     if (profile.platform && profile.platform !== this.platform) throw new Error("Choose an account profile for this platform.");
     if (!normalized.videoFolder) throw new Error("Choose a video folder.");
     if (this.platform === "instagram" && !normalized.thumbnailPath) throw new Error("Choose a thumbnail image.");
-    if (this.platform === "youtube" && !normalized.title.trim()) throw new Error("Enter a video title.");
-    if (this.platform !== "youtube" && !normalized.caption.trim()) throw new Error("Enter a caption.");
+    if (this.platform === "instagram" && !normalized.caption.trim()) throw new Error("Enter a caption.");
 
     const folderStat = await fs.stat(normalized.videoFolder).catch(() => null);
     if (!folderStat?.isDirectory()) throw new Error("The selected video folder is unavailable.");
@@ -129,14 +128,15 @@ class AutomationRunner {
       }
 
       try {
+        const automaticTitle = videoTitleFromPath(videoPath, this.platform === "youtube" ? 100 : null);
         this.update({ message: "Opening Chrome" });
         const handle = await this.chrome.open(settings.profileId);
         await this.publisher({
           page: handle.page,
           videoPath: prepared.path,
           thumbnailPath: settings.thumbnailPath,
-          caption: settings.caption,
-          title: settings.title,
+          caption: this.platform === "tiktok" ? automaticTitle : settings.caption,
+          title: this.platform === "youtube" ? automaticTitle : settings.title,
           description: settings.description,
           privacy: settings.privacy,
           madeForKids: settings.madeForKids,
