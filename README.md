@@ -2,6 +2,8 @@
 
 Reel Queue is a local desktop application for macOS and Windows. It uses a visible Google Chrome window to post videos through Instagram's normal web interface.
 
+Each queue tab is an independent automation workspace with its own Instagram account, video folder, thumbnail, caption, interval, activity, and start/stop controls. Queues using different account profiles can run simultaneously.
+
 ## Download
 
 Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub release](https://github.com/Yaascine/reel-queue/releases/latest).
@@ -14,6 +16,7 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 
 - Instagram passwords are never stored by Reel Queue. Each account profile has a separate Chrome session directory.
 - Account switching is manual. The app does not rotate profiles automatically when Instagram restricts an account.
+- Each simultaneous queue must use a different account profile. This prevents two automations from fighting over the same Chrome session.
 - A source video is moved into a `posted` subfolder only after Instagram displays a positive sharing confirmation. The folder is created automatically.
 - When confirmation is missing, the source video remains untouched and a screenshot is saved in the application's data directory.
 - A matching JSON diagnostic is saved beside each failure screenshot. Use **Open diagnostics** in the Activity panel to inspect it.
@@ -43,10 +46,11 @@ npm start
 
 In the app:
 
-1. Add an account profile.
-2. Click **Open Instagram login** and sign in manually in Chrome.
-3. Return to Reel Queue and choose the video folder, thumbnail, caption, and interval.
-4. Click **Start queue**.
+1. Use the first queue tab or click **New queue** for another niche.
+2. Add an account profile for that queue.
+3. Click **Open Instagram login** and sign in manually in Chrome.
+4. Return to Reel Queue and choose the video folder, thumbnail, caption, and interval.
+5. Click **Start queue**. Switch tabs to configure or start another account while it runs.
 
 Videos are processed in natural filename order. MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common video containers are supported.
 

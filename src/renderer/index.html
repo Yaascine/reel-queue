@@ -26,14 +26,22 @@
         </div>
       </header>
 
+      <nav class="workspace-bar" aria-label="Automation queues">
+        <div id="workspaceTabs" class="workspace-tabs" role="tablist"></div>
+        <button id="addWorkspaceButton" class="workspace-add" type="button">+ New queue</button>
+      </nav>
+
       <main>
         <section class="setup-panel" aria-labelledby="setupTitle">
           <div class="section-heading">
             <div>
               <h2 id="setupTitle">Posting setup</h2>
-              <p>Choose an account session and the content to publish.</p>
+              <p id="workspaceDescription">Choose an account session and the content to publish.</p>
             </div>
-            <button id="openLoginButton" class="button secondary" type="button">Open Instagram login</button>
+            <div class="setup-actions">
+              <button id="removeWorkspaceButton" class="text-button danger-text" type="button">Remove queue</button>
+              <button id="openLoginButton" class="button secondary" type="button">Open Instagram login</button>
+            </div>
           </div>
 
           <div id="notice" class="notice" role="alert" hidden></div>
@@ -147,6 +155,22 @@
         <div class="dialog-actions">
           <button class="button secondary" value="cancel" type="submit">Cancel</button>
           <button id="createProfileButton" class="button primary" value="default" type="button">Create profile</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="workspaceDialog">
+      <form method="dialog" id="workspaceForm">
+        <h2>Add queue tab</h2>
+        <p>Each queue can use a different Instagram account and content folder.</p>
+        <div class="field">
+          <label for="workspaceNameInput">Queue name</label>
+          <input id="workspaceNameInput" type="text" maxlength="36" placeholder="Example: MMA clips" autocomplete="off" />
+          <p id="workspaceError" class="field-error" hidden></p>
+        </div>
+        <div class="dialog-actions">
+          <button class="button secondary" value="cancel" type="submit">Cancel</button>
+          <button id="createWorkspaceButton" class="button primary" value="default" type="button">Create queue</button>
         </div>
       </form>
     </dialog>

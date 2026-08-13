@@ -3,12 +3,12 @@ const fs = require("node:fs/promises");
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } = require("electron");
 const { AppStore } = require("./store");
 const { ChromeManager } = require("./chrome");
-const { AutomationRunner } = require("./runner");
+const { AutomationManager } = require("./automation-manager");
 
 let mainWindow;
 let store;
 let chrome;
-let runner;
+let automation;
 
 function iconPath() {
   return path.join(__dirname, "..", "build", "icon.png");
@@ -43,10 +43,10 @@ async function createWindow() {
 
 function registerIpc() {
   ipcMain.handle("app:bootstrap", async () => ({
-    settings: await store.getSettings(),
+    workspaces: await store.listWorkspaces(),
     profiles: await store.listProfiles(),
     history: (await store.getHistory()).slice(0, 100),
-    status: runner.getStatus()
+    statuses: await automation.getStatuses()
   }));
 
   ipcMain.handle("dialog:video-folder", async () => {
@@ -66,14 +66,15 @@ function registerIpc() {
     return result.canceled ? "" : result.filePaths[0];
   });
 
-  ipcMain.handle("settings:save", (_event, settings) => store.saveSettings(settings));
+  ipcMain.handle("workspaces:create", (_event, name) => store.createWorkspace(name));
+  ipcMain.handle("workspaces:save", (_event, id, settings) => store.saveWorkspaceSettings(id, settings));
+  ipcMain.handle("workspaces:remove", (_event, id) => automation.remove(id));
   ipcMain.handle("app:open-diagnostics", () => shell.openPath(store.screenshotRoot));
   ipcMain.handle("profiles:create", async (_event, name) => {
-    if (runner.running) throw new Error("Stop the automation before adding an account profile.");
     return store.createProfile(name);
   });
   ipcMain.handle("profiles:remove", async (_event, id) => {
-    if (runner.running) throw new Error("Stop the automation before removing an account profile.");
+    if (automation.isProfileRunning(id)) throw new Error("Stop the queue using this account before removing it.");
     const profileDirectory = store.getProfileDirectory(id);
     await chrome.close(id);
     await store.removeProfile(id);
@@ -85,9 +86,12 @@ function registerIpc() {
     }
     return true;
   });
-  ipcMain.handle("profiles:open-login", async (_event, id) => chrome.openLogin(id));
-  ipcMain.handle("automation:start", (_event, settings) => runner.start(settings));
-  ipcMain.handle("automation:stop", () => runner.stop());
+  ipcMain.handle("profiles:open-login", async (_event, id) => {
+    if (automation.isProfileRunning(id)) throw new Error("This account is currently posting. Stop its queue before opening login.");
+    return chrome.openLogin(id);
+  });
+  ipcMain.handle("automation:start", (_event, workspaceId, settings) => automation.start(workspaceId, settings));
+  ipcMain.handle("automation:stop", (_event, workspaceId) => automation.stop(workspaceId));
 }
 
 const singleInstance = app.requestSingleInstanceLock();
@@ -125,7 +129,7 @@ if (!singleInstance) {
       const entry = await store.appendLog(level, message);
       send("automation:log", entry);
     });
-    runner = new AutomationRunner({
+    automation = new AutomationManager({
       store,
       chrome,
       emit: (type, payload) => send(`automation:${type}`, payload)
@@ -145,7 +149,7 @@ app.on("before-quit", (event) => {
   if (!chrome || quitting) return;
   event.preventDefault();
   quitting = true;
-  Promise.resolve(runner?.stop())
+  Promise.resolve(automation?.stopAll())
     .catch(() => {})
     .then(() => chrome.closeAll())
     .catch(() => {})

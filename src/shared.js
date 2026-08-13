@@ -32,10 +32,18 @@ function safeProfileName(value) {
     .slice(0, 48);
 }
 
+function safeWorkspaceName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .slice(0, 36);
+}
+
 module.exports = {
   VIDEO_EXTENSIONS,
   normalizeSettings,
   isSupportedVideo,
   naturalCompare,
-  safeProfileName
+  safeProfileName,
+  safeWorkspaceName
 };

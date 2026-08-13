@@ -7,13 +7,16 @@ const { moveToPosted, prepareVideo } = require("./media");
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 class AutomationRunner {
-  constructor({ store, chrome, emit, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted }) {
+  constructor({ workspaceId = "", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted }) {
+    this.workspaceId = workspaceId;
     this.store = store;
     this.chrome = chrome;
     this.emit = emit;
     this.publisher = publisher;
     this.mediaPreparer = mediaPreparer;
     this.postedMover = postedMover;
+    this.saveSettings = saveSettings || ((settings) => this.store.saveSettings(settings));
+    this.profileId = "";
     this.running = false;
     this.stopRequested = false;
     this.state = {
@@ -26,7 +29,7 @@ class AutomationRunner {
   }
 
   getStatus() {
-    return { running: this.running, stopRequested: this.stopRequested, ...this.state };
+    return { workspaceId: this.workspaceId, running: this.running, stopRequested: this.stopRequested, ...this.state };
   }
 
   update(patch) {
@@ -35,7 +38,7 @@ class AutomationRunner {
   }
 
   async log(level, message, details = {}) {
-    const entry = await this.store.appendLog(level, message, details);
+    const entry = await this.store.appendLog(level, message, { workspaceId: this.workspaceId, ...details });
     this.emit("log", entry);
   }
 
@@ -71,7 +74,8 @@ class AutomationRunner {
   async start(inputSettings) {
     if (this.running) throw new Error("Automation is already running.");
     const settings = await this.validate(inputSettings);
-    await this.store.saveSettings(settings);
+    await this.saveSettings(settings);
+    this.profileId = settings.profileId;
     const pending = await this.listPending(settings);
     if (!pending.length) throw new Error("No unposted videos were found in the selected folder.");
 
@@ -132,6 +136,7 @@ class AutomationRunner {
 
       await this.store.addHistory({
         status: "posted",
+        workspaceId: this.workspaceId,
         profileId: settings.profileId,
         filePath: videoPath,
         fileName: path.basename(videoPath)
