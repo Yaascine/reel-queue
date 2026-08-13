@@ -4,15 +4,38 @@ const VIDEO_EXTENSIONS = new Set([
   ".qt", ".rm", ".rmvb", ".ts", ".vob", ".webm", ".wmv", ".y4m"
 ]);
 
-function normalizeSettings(input = {}) {
+const PLATFORMS = new Set(["instagram", "youtube", "tiktok"]);
+
+function normalizePlatform(value) {
+  return PLATFORMS.has(value) ? value : "instagram";
+}
+
+function normalizeSettings(input = {}, platform = "instagram") {
   const interval = Number(input.intervalMinutes);
-  return {
+  const normalizedPlatform = normalizePlatform(platform);
+  const base = {
     profileId: typeof input.profileId === "string" ? input.profileId : "",
     videoFolder: typeof input.videoFolder === "string" ? input.videoFolder : "",
     thumbnailPath: typeof input.thumbnailPath === "string" ? input.thumbnailPath : "",
     caption: typeof input.caption === "string" ? input.caption.slice(0, 2200) : "",
     intervalMinutes: Number.isFinite(interval) ? Math.min(1440, Math.max(1, interval)) : 20
   };
+  if (normalizedPlatform === "youtube") {
+    return {
+      ...base,
+      title: typeof input.title === "string" ? input.title.slice(0, 100) : "",
+      description: typeof input.description === "string" ? input.description.slice(0, 5000) : "",
+      privacy: ["public", "unlisted", "private"].includes(input.privacy) ? input.privacy : "public",
+      madeForKids: Boolean(input.madeForKids)
+    };
+  }
+  if (normalizedPlatform === "tiktok") {
+    return {
+      ...base,
+      privacy: ["public", "friends", "private"].includes(input.privacy) ? input.privacy : "public"
+    };
+  }
+  return base;
 }
 
 function isSupportedVideo(filePath) {
@@ -41,6 +64,8 @@ function safeWorkspaceName(value) {
 
 module.exports = {
   VIDEO_EXTENSIONS,
+  PLATFORMS,
+  normalizePlatform,
   normalizeSettings,
   isSupportedVideo,
   naturalCompare,

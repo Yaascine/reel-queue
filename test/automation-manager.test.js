@@ -4,8 +4,10 @@ const { AutomationManager } = require("../src/automation-manager");
 
 function managerFixture() {
   const workspaces = [
-    { id: "mma", name: "MMA", settings: {} },
-    { id: "football", name: "Football", settings: {} }
+    { id: "mma", name: "MMA", platform: "instagram", settings: {} },
+    { id: "football", name: "Football", platform: "instagram", settings: {} },
+    { id: "shorts", name: "Shorts", platform: "youtube", settings: {} },
+    { id: "tiktoks", name: "TikToks", platform: "tiktok", settings: {} }
   ];
   const runners = new Map();
   const store = {
@@ -56,4 +58,16 @@ test("prevents two queues from controlling the same Instagram profile", async ()
     () => manager.start("football", { profileId: "same-account" }),
     /already running in another queue tab/i
   );
+});
+
+test("runs Instagram, YouTube, and TikTok queues concurrently", async () => {
+  const { manager, runners } = managerFixture();
+  await Promise.all([
+    manager.start("mma", { profileId: "instagram-account" }),
+    manager.start("shorts", { profileId: "youtube-account" }),
+    manager.start("tiktoks", { profileId: "tiktok-account" })
+  ]);
+  assert.equal(runners.get("mma").running, true);
+  assert.equal(runners.get("shorts").running, true);
+  assert.equal(runners.get("tiktoks").running, true);
 });

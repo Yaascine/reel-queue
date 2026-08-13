@@ -30,8 +30,15 @@ async function inspectMedia(inputPath, options = {}) {
   const video = stderr.match(/Stream[^\n]*Video:\s*([^,\s]+)/i)?.[1]?.toLowerCase() || "";
   const audio = stderr.match(/Stream[^\n]*Audio:\s*([^,\s]+)/i)?.[1]?.toLowerCase() || "";
   const pixelFormat = stderr.match(/Video:\s*[^\n]*?,\s*(yuv\w+|nv\w+|rgb\w+|gbr\w+)/i)?.[1]?.toLowerCase() || "";
+  const dimensions = stderr.match(/Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b/i);
+  const durationParts = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i);
+  const width = Number(dimensions?.[1] || 0);
+  const height = Number(dimensions?.[2] || 0);
+  const durationSeconds = durationParts
+    ? Number(durationParts[1]) * 3600 + Number(durationParts[2]) * 60 + Number(durationParts[3])
+    : 0;
   if (!video) throw new Error(`FFmpeg could not find a video stream in ${path.basename(inputPath)}.`);
-  return { video, audio, pixelFormat };
+  return { video, audio, pixelFormat, width, height, durationSeconds };
 }
 
 function isInstagramCompatible(media) {

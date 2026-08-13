@@ -11,7 +11,7 @@ test("persists settings and separate account profiles", async (t) => {
   const store = new AppStore(root);
   await store.initialize();
 
-  const profile = await store.createProfile("Main account");
+  const profile = await store.createProfile("instagram", "Main account");
   const profiles = await store.listProfiles();
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].name, "Main account");
@@ -32,8 +32,9 @@ test("rejects duplicate account profile names", async (t) => {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const store = new AppStore(root);
   await store.initialize();
-  await store.createProfile("Main");
-  await assert.rejects(() => store.createProfile("main"), /already exists/i);
+  await store.createProfile("instagram", "Main");
+  await assert.rejects(() => store.createProfile("instagram", "main"), /already exists/i);
+  await store.createProfile("youtube", "Main");
 });
 
 test("migrates legacy settings into the first queue and persists independent queues", async (t) => {
@@ -55,11 +56,13 @@ test("migrates legacy settings into the first queue and persists independent que
   assert.equal(first.name, "Queue 1");
   assert.deepEqual(first.settings, legacy);
 
-  const second = await store.createWorkspace("MMA clips");
+  const second = await store.createWorkspace("instagram", "MMA clips");
   await store.saveWorkspaceSettings(second.id, { ...legacy, videoFolder: "/mma", caption: "MMA" });
   const workspaces = await store.listWorkspaces();
-  assert.equal(workspaces.length, 2);
+  assert.equal(workspaces.length, 4);
   assert.equal(workspaces[0].settings.videoFolder, "/legacy-videos");
-  assert.equal(workspaces[1].settings.videoFolder, "/mma");
-  assert.equal(workspaces[1].settings.caption, "MMA");
+  const mma = workspaces.find((workspace) => workspace.id === second.id);
+  assert.equal(mma.settings.videoFolder, "/mma");
+  assert.equal(mma.settings.caption, "MMA");
+  assert.deepEqual(new Set(workspaces.map((workspace) => workspace.platform)), new Set(["instagram", "youtube", "tiktok"]));
 });

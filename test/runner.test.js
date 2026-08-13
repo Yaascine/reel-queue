@@ -107,3 +107,23 @@ test("records success before moving a video to the posted folder", async (t) => 
   assert.equal(data.history.length, 1);
   assert.equal(runner.getStatus().mode, "complete");
 });
+
+test("rejects landscape videos from a YouTube Shorts queue", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  const runner = new AutomationRunner({
+    platform: "youtube",
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    publisher: async () => ({ confirmed: true }),
+    mediaPreparer: async (videoPath) => ({
+      path: videoPath, temporary: false, mode: "unchanged", media: { width: 1920, height: 1080, durationSeconds: 10 }
+    })
+  });
+  await runner.start({ ...data.settings, thumbnailPath: "", caption: "", title: "Test Short" });
+  await waitUntilStopped(runner);
+  assert.equal(runner.getStatus().mode, "error");
+  assert.match(runner.getStatus().message, /square or vertical/i);
+  assert.equal(data.history.length, 0);
+});

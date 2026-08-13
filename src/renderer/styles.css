@@ -63,6 +63,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 24px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 14px;
 }
@@ -95,6 +96,31 @@ textarea:focus-visible {
 .brand-mark::before { height: 10px; transform: translateX(-7px); }
 .brand-mark span { height: 20px; }
 .brand-mark::after { height: 14px; transform: translateX(7px); }
+
+.platform-nav {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+.platform-tab {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.platform-tab:hover { color: var(--text); }
+.platform-tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent); }
+.platform-indicator { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #8a9087; vertical-align: 1px; }
+.platform-tab.running .platform-indicator { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
 
 .status-cluster { display: flex; align-items: center; gap: 9px; text-align: right; }
 .status-cluster strong { display: block; font-size: 13px; }
@@ -269,6 +295,9 @@ dialog form > p { margin: 6px 0 20px; color: var(--text-soft); font-size: 12px; 
   main { grid-template-columns: 1fr; }
   .run-panel { position: static; }
   .activity-panel { grid-column: 1; }
+  .topbar { flex-wrap: wrap; }
+  .platform-nav { order: 3; width: 100%; }
+  .platform-tab { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

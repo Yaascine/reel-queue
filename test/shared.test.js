@@ -21,6 +21,16 @@ test("normalizes interval and caption limits", () => {
   assert.equal(normalizeSettings({ caption: "a".repeat(2300) }).caption.length, 2200);
 });
 
+test("normalizes platform-specific settings", () => {
+  const youtube = normalizeSettings({ title: "x".repeat(120), description: "About", privacy: "unlisted", madeForKids: true }, "youtube");
+  assert.equal(youtube.title.length, 100);
+  assert.equal(youtube.privacy, "unlisted");
+  assert.equal(youtube.madeForKids, true);
+  const tiktok = normalizeSettings({ caption: "TikTok", privacy: "friends" }, "tiktok");
+  assert.equal(tiktok.caption, "TikTok");
+  assert.equal(tiktok.privacy, "friends");
+});
+
 test("sanitizes account profile names", () => {
   assert.equal(safeProfileName("  Main\u0000 Account  "), "Main Account");
   assert.equal(safeProfileName("   "), "");

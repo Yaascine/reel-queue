@@ -30,9 +30,7 @@ test("remuxes compatible MKV streams to MP4 without re-encoding", async (t) => {
   assert.equal(prepared.temporary, true);
   assert.equal(path.extname(prepared.path), ".mp4");
   assert.deepEqual(await inspectMedia(prepared.path, { ffmpegPath }), {
-    video: "h264",
-    audio: "aac",
-    pixelFormat: "yuv420p"
+    video: "h264", audio: "aac", pixelFormat: "yuv420p", width: 320, height: 568, durationSeconds: 0.32
   });
 });
 
@@ -43,10 +41,9 @@ test("transcodes incompatible MKV codecs to Instagram-safe H.264 and AAC", async
 
   const prepared = await prepareVideo(inputPath, path.join(root, "converted"), { ffmpegPath });
   assert.equal(prepared.mode, "transcoded");
-  assert.deepEqual(await inspectMedia(prepared.path, { ffmpegPath }), {
-    video: "h264",
-    audio: "aac",
-    pixelFormat: "yuv420p"
+  const media = await inspectMedia(prepared.path, { ffmpegPath });
+  assert.deepEqual({ ...media, durationSeconds: Number(media.durationSeconds.toFixed(1)) }, {
+    video: "h264", audio: "aac", pixelFormat: "yuv420p", width: 320, height: 568, durationSeconds: 0.3
   });
 });
 

@@ -67,10 +67,15 @@ class ChromeManager {
     return handle;
   }
 
-  async openLogin(profileId) {
+  async openLogin(profileId, platform = "instagram") {
     const handle = await this.open(profileId);
     await handle.page.bringToFront();
-    await handle.page.goto("https://www.instagram.com/accounts/login/?hl=en", { waitUntil: "domcontentloaded" });
+    const loginUrls = {
+      instagram: "https://www.instagram.com/accounts/login/?hl=en",
+      youtube: "https://studio.youtube.com/",
+      tiktok: "https://www.tiktok.com/tiktokstudio/upload?lang=en"
+    };
+    await handle.page.goto(loginUrls[platform] || loginUrls.instagram, { waitUntil: "domcontentloaded" });
     return true;
   }
 

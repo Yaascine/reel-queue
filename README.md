@@ -1,8 +1,8 @@
 # Reel Queue
 
-Reel Queue is a local desktop application for macOS and Windows. It uses a visible Google Chrome window to post videos through Instagram's normal web interface.
+Reel Queue is a local macOS and Windows app that uses visible Google Chrome sessions to queue Instagram Reels, YouTube Shorts, and TikTok videos.
 
-Each queue tab is an independent automation workspace with its own Instagram account, video folder, thumbnail, caption, interval, activity, and start/stop controls. Queues using different account profiles can run simultaneously.
+Instagram, YouTube, and TikTok are separate top-level sections. Every platform can have multiple independent queue tabs, and every queue has its own account profile, video directory, metadata, timer, activity log, and start/stop controls. Queues with different profiles can run at the same time, including across platforms.
 
 ## Download
 
@@ -12,70 +12,46 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 - Windows build: Windows 10/11 x64
 - Google Chrome is required
 
-## Safety behavior
+## Platform setup
 
-- Instagram passwords are never stored by Reel Queue. Each account profile has a separate Chrome session directory.
-- Account switching is manual. The app does not rotate profiles automatically when Instagram restricts an account.
-- Each simultaneous queue must use a different account profile. This prevents two automations from fighting over the same Chrome session.
-- A source video is moved into a `posted` subfolder only after Instagram displays a positive sharing confirmation. The folder is created automatically.
-- When confirmation is missing, the source video remains untouched and a screenshot is saved in the application's data directory.
-- A matching JSON diagnostic is saved beside each failure screenshot. Use **Open diagnostics** in the Activity panel to inspect it.
-- Stop requests finish the current browser action safely, then prevent the next upload.
-- The composer explicitly selects Instagram's **Original** crop option before continuing. If that option is unavailable, the post is stopped rather than silently cropped.
+1. Select Instagram, YouTube, or TikTok at the top of the app.
+2. Use the first queue or add another queue for a separate niche.
+3. Add an account profile, open that platform's login, and sign in manually in Chrome.
+4. Choose that queue's video folder, content details, visibility where available, and interval.
+5. Start the queue. Switch platform sections or queue tabs to configure and run others.
 
-Browser automation can violate Instagram's terms and may result in verification prompts, posting restrictions, or account loss. Test with an account you can afford to lose.
+Instagram queues use a caption and thumbnail, and explicitly select Instagram's **Original** crop. YouTube queues use a title, description, visibility, and audience setting. YouTube Shorts are accepted only when square or vertical and no longer than three minutes. TikTok queues use a caption and audience setting.
 
-## Troubleshooting
+## Files and safety
 
-The app opens Instagram's composer from the signed-in home navigation, selects the video's original aspect ratio, then follows the current two-screen workflow: video edit and cover selection first, caption and sharing second. If Instagram changes this flow again, Reel Queue stops without moving the video and captures the current controls for diagnosis.
+- Videos are processed in natural filename order.
+- MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common containers are supported.
+- Compatible H.264/AAC streams are remuxed to MP4 without re-encoding. Incompatible codecs are converted to high-quality H.264/AAC.
+- A source file moves to a `posted` subfolder only after the selected platform shows a positive success confirmation. The folder is created automatically.
+- A missing confirmation, login, verification prompt, or changed upload interface stops the queue and preserves the source file.
+- Failure screenshots and JSON diagnostics are available from **Open diagnostics**.
+- Passwords are never stored by Reel Queue. Each profile has a separate local Chrome session.
+- Two simultaneous queues cannot control the same account profile.
 
-If a run reports that login is required, select the account profile, click **Open Instagram login**, finish login or verification in Chrome, and retry. Do not close the Chrome window while a queue is running.
+Browser automation may violate a platform's terms and can trigger verification, posting restrictions, or account loss. Use content you have permission to publish and test cautiously.
 
-## Requirements
-
-- macOS 12 or newer, or Windows 10/11
-- Google Chrome
-- Node.js 20 or newer for development
-
-## Run from source
+## Development
 
 ```bash
 npm install
+npm test
 npm start
 ```
 
-In the app:
-
-1. Use the first queue tab or click **New queue** for another niche.
-2. Add an account profile for that queue.
-3. Click **Open Instagram login** and sign in manually in Chrome.
-4. Return to Reel Queue and choose the video folder, thumbnail, caption, and interval.
-5. Click **Start queue**. Switch tabs to configure or start another account while it runs.
-
-Videos are processed in natural filename order. MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common video containers are supported.
-
-The bundled FFmpeg converter checks each file before upload. H.264/AAC sources in MKV or another container are remuxed into MP4 with stream copy, so their audio and video quality is unchanged. Sources using codecs Instagram cannot accept are converted to H.264/AAC at a high-quality CRF 16 setting. The temporary MP4 is removed after the upload attempt; the original is never modified by conversion.
-
-## Build clickable applications
-
-On macOS:
+Build installers on their target operating systems:
 
 ```bash
 npm run dist:mac
-```
-
-On Windows:
-
-```powershell
 npm run dist:win
 ```
 
-Installers and portable builds are written to `release/`. Build the Windows installer on Windows and the signed macOS installer on macOS for production distribution.
+Artifacts are written to `release/`. Unsigned builds may trigger operating-system security warnings. Production signing requires an Apple Developer ID and a Windows code-signing certificate.
 
-For a quick unpacked Windows x64 build, run `npm run pack:win`. Its clickable executable is `release/win-unpacked/Reel Queue.exe`.
+## Maintenance
 
-Unsigned builds may trigger operating system security warnings. Code signing requires your own Apple Developer ID and Windows signing certificate.
-
-## Maintenance note
-
-Instagram changes its web interface regularly. If the posting flow stops, open the saved failure screenshot and update the accessible labels in `src/instagram.js`. The conservative confirmation rule should not be weakened because it protects source videos from accidental deletion.
+Instagram, YouTube Studio, and TikTok Studio change their interfaces regularly. When a flow changes, inspect the saved screenshot and JSON diagnostics and update the corresponding publisher in `src/`. Keep the positive-confirmation requirement intact because it prevents posted-source files from being moved prematurely.

@@ -1,5 +1,10 @@
 const { AutomationRunner } = require("./runner");
 const { normalizeSettings } = require("./shared");
+const { publishReel } = require("./instagram");
+const { publishYouTubeShort } = require("./youtube");
+const { publishTikTok } = require("./tiktok");
+
+const PUBLISHERS = { instagram: publishReel, youtube: publishYouTubeShort, tiktok: publishTikTok };
 
 class AutomationManager {
   constructor({ store, chrome, emit, runnerFactory }) {
@@ -14,13 +19,16 @@ class AutomationManager {
   async ensureRunner(workspaceId) {
     const existing = this.runners.get(workspaceId);
     if (existing) return existing;
-    if (!(await this.store.getWorkspace(workspaceId))) throw new Error("Queue not found.");
+    const workspace = await this.store.getWorkspace(workspaceId);
+    if (!workspace) throw new Error("Queue not found.");
     const runner = this.runnerFactory({
       workspaceId,
+      platform: workspace.platform,
       store: this.store,
       chrome: this.chrome,
       saveSettings: (settings) => this.store.saveWorkspaceSettings(workspaceId, settings),
-      emit: (type, payload) => this.emit(type, payload)
+      emit: (type, payload) => this.emit(type, payload),
+      publisher: PUBLISHERS[workspace.platform]
     });
     this.runners.set(workspaceId, runner);
     return runner;
@@ -48,11 +56,11 @@ class AutomationManager {
   }
 
   async start(workspaceId, inputSettings) {
-    const settings = normalizeSettings(inputSettings);
     const runner = await this.ensureRunner(workspaceId);
+    const settings = normalizeSettings(inputSettings, runner.platform);
     if (runner.running) throw new Error("This queue is already running.");
     if (this.isProfileRunning(settings.profileId, workspaceId)) {
-      throw new Error("This Instagram account is already running in another queue tab. Choose a different account profile.");
+      throw new Error("This account profile is already running in another queue tab. Choose a different account profile.");
     }
     this.reservedProfiles.set(settings.profileId, workspaceId);
     try {

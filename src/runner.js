@@ -7,8 +7,9 @@ const { moveToPosted, prepareVideo } = require("./media");
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 class AutomationRunner {
-  constructor({ workspaceId = "", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted }) {
+  constructor({ workspaceId = "", platform = "instagram", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted }) {
     this.workspaceId = workspaceId;
+    this.platform = platform;
     this.store = store;
     this.chrome = chrome;
     this.emit = emit;
@@ -29,7 +30,7 @@ class AutomationRunner {
   }
 
   getStatus() {
-    return { workspaceId: this.workspaceId, running: this.running, stopRequested: this.stopRequested, ...this.state };
+    return { workspaceId: this.workspaceId, platform: this.platform, running: this.running, stopRequested: this.stopRequested, ...this.state };
   }
 
   update(patch) {
@@ -43,17 +44,21 @@ class AutomationRunner {
   }
 
   async validate(settings) {
-    const normalized = normalizeSettings(settings);
+    const normalized = normalizeSettings(settings, this.platform);
     const profile = await this.store.getProfile(normalized.profileId);
     if (!profile) throw new Error("Choose an account profile.");
+    if (profile.platform && profile.platform !== this.platform) throw new Error("Choose an account profile for this platform.");
     if (!normalized.videoFolder) throw new Error("Choose a video folder.");
-    if (!normalized.thumbnailPath) throw new Error("Choose a thumbnail image.");
-    if (!normalized.caption.trim()) throw new Error("Enter a caption.");
+    if (this.platform === "instagram" && !normalized.thumbnailPath) throw new Error("Choose a thumbnail image.");
+    if (this.platform === "youtube" && !normalized.title.trim()) throw new Error("Enter a video title.");
+    if (this.platform !== "youtube" && !normalized.caption.trim()) throw new Error("Enter a caption.");
 
     const folderStat = await fs.stat(normalized.videoFolder).catch(() => null);
     if (!folderStat?.isDirectory()) throw new Error("The selected video folder is unavailable.");
-    const thumbnailStat = await fs.stat(normalized.thumbnailPath).catch(() => null);
-    if (!thumbnailStat?.isFile()) throw new Error("The selected thumbnail is unavailable.");
+    if (this.platform === "instagram") {
+      const thumbnailStat = await fs.stat(normalized.thumbnailPath).catch(() => null);
+      if (!thumbnailStat?.isFile()) throw new Error("The selected thumbnail is unavailable.");
+    }
     return normalized;
   }
 
@@ -113,10 +118,14 @@ class AutomationRunner {
       const prepared = await this.mediaPreparer(videoPath, this.store.conversionRoot, {
         onProgress: (message) => this.update({ message })
       });
+      if (this.platform === "youtube" && (prepared.media.width > prepared.media.height || prepared.media.durationSeconds > 180)) {
+        if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
+        throw new Error("YouTube Shorts must be square or vertical and no longer than 3 minutes. The source video was kept.");
+      }
       if (prepared.mode === "remuxed") {
         await this.log("info", `Prepared ${path.basename(videoPath)} without re-encoding.`, { filePath: videoPath });
       } else if (prepared.mode === "transcoded") {
-        await this.log("info", `Converted ${path.basename(videoPath)} to a high-quality Instagram MP4.`, { filePath: videoPath });
+        await this.log("info", `Converted ${path.basename(videoPath)} to a high-quality MP4.`, { filePath: videoPath });
       }
 
       try {
@@ -127,6 +136,10 @@ class AutomationRunner {
           videoPath: prepared.path,
           thumbnailPath: settings.thumbnailPath,
           caption: settings.caption,
+          title: settings.title,
+          description: settings.description,
+          privacy: settings.privacy,
+          madeForKids: settings.madeForKids,
           screenshotRoot: this.store.screenshotRoot,
           onStep: (message) => this.update({ message })
         });
@@ -137,6 +150,7 @@ class AutomationRunner {
       await this.store.addHistory({
         status: "posted",
         workspaceId: this.workspaceId,
+        platform: this.platform,
         profileId: settings.profileId,
         filePath: videoPath,
         fileName: path.basename(videoPath)

@@ -66,12 +66,12 @@ function registerIpc() {
     return result.canceled ? "" : result.filePaths[0];
   });
 
-  ipcMain.handle("workspaces:create", (_event, name) => store.createWorkspace(name));
+  ipcMain.handle("workspaces:create", (_event, platform, name) => store.createWorkspace(platform, name));
   ipcMain.handle("workspaces:save", (_event, id, settings) => store.saveWorkspaceSettings(id, settings));
   ipcMain.handle("workspaces:remove", (_event, id) => automation.remove(id));
   ipcMain.handle("app:open-diagnostics", () => shell.openPath(store.screenshotRoot));
-  ipcMain.handle("profiles:create", async (_event, name) => {
-    return store.createProfile(name);
+  ipcMain.handle("profiles:create", async (_event, platform, name) => {
+    return store.createProfile(platform, name);
   });
   ipcMain.handle("profiles:remove", async (_event, id) => {
     if (automation.isProfileRunning(id)) throw new Error("Stop the queue using this account before removing it.");
@@ -86,9 +86,9 @@ function registerIpc() {
     }
     return true;
   });
-  ipcMain.handle("profiles:open-login", async (_event, id) => {
+  ipcMain.handle("profiles:open-login", async (_event, id, platform) => {
     if (automation.isProfileRunning(id)) throw new Error("This account is currently posting. Stop its queue before opening login.");
-    return chrome.openLogin(id);
+    return chrome.openLogin(id, platform);
   });
   ipcMain.handle("automation:start", (_event, workspaceId, settings) => automation.start(workspaceId, settings));
   ipcMain.handle("automation:stop", (_event, workspaceId) => automation.stop(workspaceId));

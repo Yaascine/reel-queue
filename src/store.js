@@ -1,7 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { normalizeSettings, safeProfileName, safeWorkspaceName } = require("./shared");
+const { normalizePlatform, normalizeSettings, safeProfileName, safeWorkspaceName } = require("./shared");
 
 class AppStore {
   constructor(rootDirectory) {
@@ -68,9 +68,40 @@ class AppStore {
       await this.writeJson(this.workspacesPath, [{
         id: crypto.randomUUID(),
         name: "Queue 1",
+        platform: "instagram",
         createdAt: new Date().toISOString(),
         settings: legacySettings
       }]);
+    }
+    await this.migratePlatformData();
+  }
+
+  async migratePlatformData() {
+    const rawWorkspaces = await this.readJson(this.workspacesPath, []);
+    let changed = false;
+    const workspaces = rawWorkspaces.map((workspace) => {
+      if (!workspace.platform) changed = true;
+      const platform = normalizePlatform(workspace.platform);
+      return { ...workspace, platform, settings: normalizeSettings(workspace.settings, platform) };
+    });
+    for (const platform of ["instagram", "youtube", "tiktok"]) {
+      if (!workspaces.some((workspace) => workspace.platform === platform)) {
+        workspaces.push({
+          id: crypto.randomUUID(),
+          name: "Queue 1",
+          platform,
+          createdAt: new Date().toISOString(),
+          settings: normalizeSettings({}, platform)
+        });
+        changed = true;
+      }
+    }
+    if (changed) await this.writeJson(this.workspacesPath, workspaces);
+
+    const rawProfiles = await this.readJson(this.profilesPath, []);
+    const profiles = rawProfiles.map((profile) => profile.platform ? profile : { ...profile, platform: "instagram" });
+    if (profiles.some((profile, index) => profile !== rawProfiles[index])) {
+      await this.writeJson(this.profilesPath, profiles);
     }
   }
 
@@ -88,12 +119,15 @@ class AppStore {
     const workspaces = await this.readJson(this.workspacesPath, []);
     return workspaces
       .filter((workspace) => workspace && workspace.id && workspace.name)
-      .map((workspace) => ({
+      .map((workspace) => {
+        const platform = normalizePlatform(workspace.platform);
+        return {
         id: workspace.id,
         name: safeWorkspaceName(workspace.name) || "Untitled queue",
+        platform,
         createdAt: workspace.createdAt || new Date(0).toISOString(),
-        settings: normalizeSettings(workspace.settings)
-      }))
+        settings: normalizeSettings(workspace.settings, platform)
+      };})
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
@@ -101,19 +135,21 @@ class AppStore {
     return (await this.listWorkspaces()).find((workspace) => workspace.id === id) || null;
   }
 
-  async createWorkspace(name) {
+  async createWorkspace(platform, name) {
+    const normalizedPlatform = normalizePlatform(platform);
     const cleanName = safeWorkspaceName(name);
     if (!cleanName) throw new Error("Enter a queue name.");
     return this.queueWrite(this.workspacesPath, async () => {
       const workspaces = await this.listWorkspaces();
-      if (workspaces.some((workspace) => workspace.name.toLowerCase() === cleanName.toLowerCase())) {
+      if (workspaces.some((workspace) => workspace.platform === normalizedPlatform && workspace.name.toLowerCase() === cleanName.toLowerCase())) {
         throw new Error("A queue with that name already exists.");
       }
       const workspace = {
         id: crypto.randomUUID(),
         name: cleanName,
+        platform: normalizedPlatform,
         createdAt: new Date().toISOString(),
-        settings: normalizeSettings()
+        settings: normalizeSettings({}, normalizedPlatform)
       };
       workspaces.push(workspace);
       await this.writeJson(this.workspacesPath, workspaces);
@@ -126,7 +162,7 @@ class AppStore {
       const workspaces = await this.listWorkspaces();
       const workspace = workspaces.find((candidate) => candidate.id === id);
       if (!workspace) throw new Error("Queue not found.");
-      workspace.settings = normalizeSettings(settings);
+      workspace.settings = normalizeSettings(settings, workspace.platform);
       await this.writeJson(this.workspacesPath, workspaces);
       return workspace.settings;
     });
@@ -135,7 +171,11 @@ class AppStore {
   async removeWorkspace(id) {
     return this.queueWrite(this.workspacesPath, async () => {
       const workspaces = await this.listWorkspaces();
-      if (workspaces.length <= 1) throw new Error("Keep at least one queue tab.");
+      const workspace = workspaces.find((candidate) => candidate.id === id);
+      if (!workspace) throw new Error("Queue not found.");
+      if (workspaces.filter((candidate) => candidate.platform === workspace.platform).length <= 1) {
+        throw new Error("Keep at least one queue tab for this platform.");
+      }
       const next = workspaces.filter((workspace) => workspace.id !== id);
       if (next.length === workspaces.length) throw new Error("Queue not found.");
       await this.writeJson(this.workspacesPath, next);
@@ -147,20 +187,23 @@ class AppStore {
     const profiles = await this.readJson(this.profilesPath, []);
     return profiles
       .filter((profile) => profile && profile.id && profile.name)
+      .map((profile) => ({ ...profile, platform: normalizePlatform(profile.platform) }))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
-  async createProfile(name) {
+  async createProfile(platform, name) {
+    const normalizedPlatform = normalizePlatform(platform);
     const cleanName = safeProfileName(name);
     if (!cleanName) throw new Error("Enter an account profile name.");
 
     const profiles = await this.listProfiles();
-    const duplicate = profiles.some((profile) => profile.name.toLowerCase() === cleanName.toLowerCase());
+    const duplicate = profiles.some((profile) => profile.platform === normalizedPlatform && profile.name.toLowerCase() === cleanName.toLowerCase());
     if (duplicate) throw new Error("An account profile with that name already exists.");
 
     const profile = {
       id: crypto.randomUUID(),
       name: cleanName,
+      platform: normalizedPlatform,
       createdAt: new Date().toISOString()
     };
     profiles.push(profile);
