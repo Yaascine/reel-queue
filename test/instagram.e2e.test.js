@@ -27,11 +27,26 @@ const mockInstagram = `<!doctype html>
           '<h1>Create new post</h1>' +
           '<section id="selectStage">' +
           '<input id="videoInput" type="file" accept="video/mp4,video/quicktime">' +
+          '<button id="cropButton" aria-label="Select crop" hidden>Select crop</button>' +
           '<button id="firstNext" hidden>Next</button>' +
           '</section>';
         document.querySelector('#videoInput').addEventListener('change', (event) => {
           events.push('video:' + event.target.files[0].name);
+          document.querySelector('#cropButton').hidden = false;
           document.querySelector('#firstNext').hidden = false;
+        });
+        document.querySelector('#cropButton').addEventListener('click', () => {
+          events.push('crop-open');
+          const menu = document.createElement('div');
+          menu.id = 'cropMenu';
+          menu.innerHTML =
+            '<button id="originalOption" role="menuitem">Original</button>' +
+            '<button role="menuitem">1:1</button>';
+          app.append(menu);
+          document.querySelector('#originalOption').addEventListener('click', () => {
+            events.push('crop:original');
+            menu.remove();
+          });
         });
         document.querySelector('#firstNext').addEventListener('click', () => {
         events.push('first-next');
@@ -108,6 +123,8 @@ test("publishes through the current two-step edit and caption flow", { skip: !fi
   assert.deepEqual(await page.evaluate(() => window.testEvents), [
     "create-open",
     "video:test-reel.mp4",
+    "crop-open",
+    "crop:original",
     "first-next",
     "cover-open",
     "cover:test-cover.jpg",

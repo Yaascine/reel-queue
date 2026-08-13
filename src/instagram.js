@@ -129,6 +129,32 @@ async function setVideoFile(input, videoPath) {
   await input.setInputFiles(videoPath);
 }
 
+async function setOriginalAspectRatio(page) {
+  const cropControl = await firstVisible(
+    [
+      ...namedLocators(page, ["Select crop", "Crop", "Change aspect ratio"]),
+      page.locator(
+        '[aria-label*="select crop" i], [aria-label*="aspect ratio" i], button:has(svg[aria-label*="crop" i])'
+      )
+    ],
+    15_000
+  );
+  if (!cropControl) return false;
+
+  await cropControl.click();
+  const originalOption = await firstVisible(
+    [
+      ...namedLocators(page, ["Original"], ["button", "menuitem", "option", "radio"]),
+      page.getByText(/^\s*Original\s*$/i, { exact: true })
+    ],
+    8_000
+  );
+  if (!originalOption) return false;
+
+  await originalOption.click();
+  return true;
+}
+
 async function setCoverFile(page, thumbnailPath) {
   const coverControl = await firstVisible(namedLocators(page, ["Cover photo", "Edit cover", "Cover"]), 15_000);
   if (!coverControl) return false;
@@ -238,6 +264,15 @@ async function publishReel({
     const formatDialog = await firstVisible(namedLocators(page, ["OK", "Continue"]), 2_000);
     if (formatDialog) await formatDialog.click();
 
+    stage = "setting the original aspect ratio";
+    onStep("Keeping the original aspect ratio");
+    const originalAspectRatioApplied = await setOriginalAspectRatio(page);
+    if (!originalAspectRatioApplied) {
+      throw new Error(
+        "Instagram did not expose its Original aspect-ratio option. The video was not posted to prevent an unwanted crop."
+      );
+    }
+
     stage = "waiting for video processing";
     onStep("Preparing the video");
     await clickNamed(page, ["Next"], 120_000);
@@ -289,6 +324,7 @@ module.exports = {
   clickNamed,
   openComposer,
   publishReel,
+  setOriginalAspectRatio,
   setCoverFile,
   waitForPositiveConfirmation
 };

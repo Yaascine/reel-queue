@@ -18,12 +18,13 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 - When confirmation is missing, the source video remains untouched and a screenshot is saved in the application's data directory.
 - A matching JSON diagnostic is saved beside each failure screenshot. Use **Open diagnostics** in the Activity panel to inspect it.
 - Stop requests finish the current browser action safely, then prevent the next upload.
+- The composer explicitly selects Instagram's **Original** crop option before continuing. If that option is unavailable, the post is stopped rather than silently cropped.
 
 Browser automation can violate Instagram's terms and may result in verification prompts, posting restrictions, or account loss. Test with an account you can afford to lose.
 
 ## Troubleshooting
 
-The app opens Instagram's composer from the signed-in home navigation, then follows the current two-screen workflow: video edit and cover selection first, caption and sharing second. If Instagram changes this flow again, Reel Queue stops without deleting the video and captures the current controls for diagnosis.
+The app opens Instagram's composer from the signed-in home navigation, selects the video's original aspect ratio, then follows the current two-screen workflow: video edit and cover selection first, caption and sharing second. If Instagram changes this flow again, Reel Queue stops without moving the video and captures the current controls for diagnosis.
 
 If a run reports that login is required, select the account profile, click **Open Instagram login**, finish login or verification in Chrome, and retry. Do not close the Chrome window while a queue is running.
 
