@@ -9,6 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  windows-package-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run dist:win
+      - name: Execute packaged FFmpeg on Windows
+        shell: pwsh
+        run: '& "release/win-unpacked/resources/ffmpeg/ffmpeg.exe" -version'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reel-queue-windows-smoke
+          path: |
+            release/Reel Queue Setup *.exe
+            release/Reel Queue *.exe
+          if-no-files-found: error
   verify:
     strategy:
       fail-fast: false
