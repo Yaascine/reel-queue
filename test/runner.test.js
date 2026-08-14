@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { AutomationRunner } = require("../src/runner");
+const { AutomationRunner, chooseIntervalMinutes, randomChoice } = require("../src/runner");
 const { ConfirmationError } = require("../src/instagram");
 
 async function fixture() {
@@ -108,6 +108,56 @@ test("records success before moving a video to the posted folder", async (t) => 
   assert.equal(runner.getStatus().mode, "complete");
 });
 
+test("allows Instagram to use an automatic thumbnail", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  let published;
+  const runner = new AutomationRunner({
+    store: data.store, chrome: { open: async () => ({ page: {} }) }, emit: () => {},
+    publisher: async (input) => { published = input; return { confirmed: true }; },
+    mediaPreparer: async (source) => ({ path: source, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+  await runner.start({ ...data.settings, thumbnailMode: "automatic", thumbnailPath: "" });
+  await waitUntilStopped(runner);
+  assert.equal(published.thumbnailPath, "");
+  assert.equal(runner.getStatus().mode, "complete");
+});
+
+test("randomly chooses an Instagram thumbnail and saved caption for each post", async (t) => {
+  const data = await fixture();
+  const thumbnailFolder = path.join(data.root, "thumbnails");
+  await fs.mkdir(thumbnailFolder);
+  await fs.writeFile(path.join(thumbnailFolder, "a.jpg"), "a");
+  await fs.writeFile(path.join(thumbnailFolder, "b.png"), "b");
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  let published;
+  const runner = new AutomationRunner({
+    store: data.store, chrome: { open: async () => ({ page: {} }) }, emit: () => {}, random: () => 0.999,
+    publisher: async (input) => { published = input; return { confirmed: true }; },
+    mediaPreparer: async (source) => ({ path: source, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+  await runner.start({
+    ...data.settings,
+    thumbnailMode: "folder",
+    thumbnailFolder,
+    caption: "",
+    savedCaptions: ["Caption A", "Caption B"]
+  });
+  await waitUntilStopped(runner);
+  assert.equal(published.thumbnailPath, path.join(thumbnailFolder, "b.png"));
+  assert.equal(published.caption, "Caption B");
+});
+
+test("chooses fixed or inclusive random queue gaps", () => {
+  assert.equal(chooseIntervalMinutes({ intervalMinutes: 20, randomIntervalEnabled: false }), 20);
+  const settings = { randomIntervalEnabled: true, randomIntervalMinMinutes: 7, randomIntervalMaxMinutes: 12 };
+  assert.equal(chooseIntervalMinutes(settings, () => 0), 7);
+  assert.equal(chooseIntervalMinutes(settings, () => 0.999), 12);
+  assert.equal(randomChoice(["a", "b"], () => 0.999), "b");
+});
+
 test("rejects landscape videos from a YouTube Shorts queue", async (t) => {
   const data = await fixture();
   t.after(() => fs.rm(data.root, { recursive: true, force: true }));
@@ -138,15 +188,24 @@ test("uses a trimmed extension-free filename as the YouTube title", async (t) =>
   let published;
   const runner = new AutomationRunner({
     platform: "youtube", store: data.store, chrome: { open: async () => ({ page: {} }) }, emit: () => {},
+    random: () => 0.999,
     publisher: async (input) => { published = input; return { confirmed: true }; },
     mediaPreparer: async (source) => ({ path: source, temporary: false, mode: "unchanged", media: { width: 720, height: 1280, durationSeconds: 10 } }),
     postedMover: async () => "posted"
   });
-  await runner.start({ ...data.settings, thumbnailPath: "", caption: "", title: "Ignored fixed title" });
+  await runner.start({
+    ...data.settings,
+    thumbnailPath: "",
+    caption: "",
+    title: "Ignored fixed title",
+    description: "Ignored fixed description",
+    savedDescriptions: ["Description A", "Description B"]
+  });
   await waitUntilStopped(runner);
   assert.equal(published.title, longStem.slice(0, 100).trimEnd());
   assert.equal(published.title.length, 100);
   assert.equal(published.thumbnailPath, "");
+  assert.equal(published.description, "Description B");
   assert.equal(published.privacy, "public");
 });
 

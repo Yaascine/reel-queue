@@ -71,6 +71,27 @@
               <p id="intervalHelp" class="helper">The timer starts after Instagram confirms a successful post.</p>
             </div>
 
+            <div class="field random-interval-field">
+              <label class="check-row random-toggle" for="randomIntervalEnabled">
+                <input id="randomIntervalEnabled" type="checkbox" />
+                <span>
+                  <strong>Randomize the gap</strong>
+                  <small>Choose a new whole-minute delay after every successful post.</small>
+                </span>
+              </label>
+              <div id="randomIntervalRange" class="random-range" hidden>
+                <label>
+                  <span>Minimum</span>
+                  <span class="number-control"><input id="randomIntervalMinInput" type="number" min="1" max="1440" step="1" value="10" /><small>minutes</small></span>
+                </label>
+                <span class="range-divider" aria-hidden="true">to</span>
+                <label>
+                  <span>Maximum</span>
+                  <span class="number-control"><input id="randomIntervalMaxInput" type="number" min="1" max="1440" step="1" value="30" /><small>minutes</small></span>
+                </label>
+              </div>
+            </div>
+
             <div class="field file-field">
               <label for="folderPath">Video folder</label>
               <div class="path-control">
@@ -81,12 +102,18 @@
             </div>
 
             <div id="thumbnailField" class="field file-field">
-              <label for="thumbnailPath">Thumbnail</label>
+              <label for="thumbnailModeSelect">Instagram thumbnail</label>
+              <select id="thumbnailModeSelect" class="thumbnail-mode">
+                <option value="automatic">Automatic video frame</option>
+                <option value="single">One image for every Reel</option>
+                <option value="folder">Shuffle images from a folder</option>
+              </select>
               <div class="path-control">
-                <input id="thumbnailPath" type="text" readonly placeholder="No image selected" />
+                <input id="thumbnailPath" type="text" readonly placeholder="Instagram will choose automatically" />
                 <button id="thumbnailButton" class="button secondary" type="button">Choose image</button>
+                <button id="thumbnailClearButton" class="text-button" type="button">Clear</button>
               </div>
-              <p class="helper">The same JPG or PNG image is used for every Reel.</p>
+              <p id="thumbnailHelp" class="helper">No image is required. Instagram will choose a frame from the video.</p>
             </div>
 
             <div id="captionField" class="field caption-field">
@@ -95,6 +122,11 @@
                 <span id="captionCount">0 / 2200</span>
               </div>
               <textarea id="captionInput" maxlength="2200" rows="6" placeholder="Write the caption used for every Reel"></textarea>
+              <div class="pool-actions">
+                <button id="saveCaptionButton" class="button secondary compact-button" type="button">Save caption</button>
+                <span class="helper">Saved captions are shuffled and one is used for each Reel.</span>
+              </div>
+              <div id="captionPool" class="text-pool" aria-label="Saved captions"></div>
             </div>
 
             <div id="youtubeTitleField" class="field file-field" hidden>
@@ -111,6 +143,11 @@
                 <span id="youtubeDescriptionCount">0 / 5000</span>
               </div>
               <textarea id="youtubeDescriptionInput" maxlength="5000" rows="6" placeholder="Write the description used for every Short"></textarea>
+              <div class="pool-actions">
+                <button id="saveDescriptionButton" class="button secondary compact-button" type="button">Save description</button>
+                <span class="helper">Saved descriptions are shuffled and one is used for each Short.</span>
+              </div>
+              <div id="descriptionPool" class="text-pool" aria-label="Saved descriptions"></div>
             </div>
 
             <div id="privacyField" class="field account-field" hidden>

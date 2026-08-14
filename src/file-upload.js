@@ -1,4 +1,8 @@
+const fs = require("node:fs/promises");
+const path = require("node:path");
+
 const VIDEO_FILE_SELECTION_TIMEOUT = 300_000;
+const PLAYWRIGHT_REMOTE_FILE_LIMIT = 50 * 1024 * 1024;
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -13,10 +17,33 @@ async function waitForAccepted(isAccepted, timeout = VIDEO_FILE_SELECTION_TIMEOU
   return false;
 }
 
-async function setVideoInputFile(input, videoPath, { platform, isAccepted } = {}) {
+async function setLocalFileViaCdp(input, page, videoPath) {
+  const bridgeKey = `__reelQueueFileInput_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  await input.evaluate((element, key) => { globalThis[key] = element; }, bridgeKey);
+  const session = await page.context().newCDPSession(page);
+  try {
+    const evaluation = await session.send("Runtime.evaluate", {
+      expression: `globalThis[${JSON.stringify(bridgeKey)}]`,
+      objectGroup: "reel-queue-file-upload"
+    });
+    const objectId = evaluation?.result?.objectId;
+    if (!objectId) throw new Error("Chrome could not resolve the local video selector.");
+    await session.send("DOM.setFileInputFiles", { files: [path.resolve(videoPath)], objectId });
+  } finally {
+    await session.send("Runtime.releaseObjectGroup", { objectGroup: "reel-queue-file-upload" }).catch(() => {});
+    await session.detach().catch(() => {});
+    await page.evaluate((key) => { delete globalThis[key]; }, bridgeKey).catch(() => {});
+  }
+}
+
+async function setVideoInputFile(input, videoPath, { platform, isAccepted, page } = {}) {
   let finished = false;
-  const selection = input
-    .setInputFiles(videoPath, { timeout: VIDEO_FILE_SELECTION_TIMEOUT })
+  const fileSize = await fs.stat(videoPath).then((stat) => stat.size).catch(() => 0);
+  const useDirectLocalPath = fileSize > PLAYWRIGHT_REMOTE_FILE_LIMIT && page;
+  const selection = Promise.resolve()
+    .then(() => useDirectLocalPath
+      ? setLocalFileViaCdp(input, page, videoPath)
+      : input.setInputFiles(videoPath, { timeout: VIDEO_FILE_SELECTION_TIMEOUT }))
     .then(() => ({ type: "selected" }))
     .catch((error) => ({ type: "error", error }))
     .finally(() => { finished = true; });
@@ -48,4 +75,10 @@ async function setVideoInputFile(input, videoPath, { platform, isAccepted } = {}
   throw result.error;
 }
 
-module.exports = { VIDEO_FILE_SELECTION_TIMEOUT, setVideoInputFile, waitForAccepted };
+module.exports = {
+  PLAYWRIGHT_REMOTE_FILE_LIMIT,
+  VIDEO_FILE_SELECTION_TIMEOUT,
+  setLocalFileViaCdp,
+  setVideoInputFile,
+  waitForAccepted
+};

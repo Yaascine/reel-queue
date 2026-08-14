@@ -7,26 +7,49 @@ const VIDEO_EXTENSIONS = new Set([
 ]);
 
 const PLATFORMS = new Set(["instagram", "youtube", "tiktok"]);
+const IMAGE_EXTENSIONS = new Set([".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png"]);
+
+function normalizeTextPool(value, maximumLength) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  return value
+    .map((entry) => typeof entry === "string" ? entry.trim().slice(0, maximumLength) : "")
+    .filter((entry) => entry && !seen.has(entry) && seen.add(entry))
+    .slice(0, 100);
+}
+
+function normalizeMinutes(value, fallback) {
+  const minutes = Number(value);
+  return Number.isFinite(minutes) ? Math.min(1440, Math.max(1, Math.round(minutes))) : fallback;
+}
 
 function normalizePlatform(value) {
   return PLATFORMS.has(value) ? value : "instagram";
 }
 
 function normalizeSettings(input = {}, platform = "instagram") {
-  const interval = Number(input.intervalMinutes);
   const normalizedPlatform = normalizePlatform(platform);
   const base = {
     profileId: typeof input.profileId === "string" ? input.profileId : "",
     videoFolder: typeof input.videoFolder === "string" ? input.videoFolder : "",
     thumbnailPath: typeof input.thumbnailPath === "string" ? input.thumbnailPath : "",
     caption: typeof input.caption === "string" ? input.caption.slice(0, 2200) : "",
-    intervalMinutes: Number.isFinite(interval) ? Math.min(1440, Math.max(1, interval)) : 20
+    intervalMinutes: normalizeMinutes(input.intervalMinutes, 20),
+    randomIntervalEnabled: Boolean(input.randomIntervalEnabled),
+    randomIntervalMinMinutes: normalizeMinutes(input.randomIntervalMinMinutes, 10),
+    randomIntervalMaxMinutes: normalizeMinutes(input.randomIntervalMaxMinutes, 30),
+    thumbnailMode: ["automatic", "single", "folder"].includes(input.thumbnailMode)
+      ? input.thumbnailMode
+      : (input.thumbnailFolder ? "folder" : input.thumbnailPath ? "single" : "automatic"),
+    thumbnailFolder: typeof input.thumbnailFolder === "string" ? input.thumbnailFolder : "",
+    savedCaptions: normalizeTextPool(input.savedCaptions, 2200)
   };
   if (normalizedPlatform === "youtube") {
     return {
       ...base,
       title: typeof input.title === "string" ? input.title.slice(0, 100) : "",
       description: typeof input.description === "string" ? input.description.slice(0, 5000) : "",
+      savedDescriptions: normalizeTextPool(input.savedDescriptions, 5000),
       privacy: ["public", "unlisted", "private"].includes(input.privacy) ? input.privacy : "public",
       madeForKids: Boolean(input.madeForKids)
     };
@@ -44,6 +67,12 @@ function isSupportedVideo(filePath) {
   const index = filePath.lastIndexOf(".");
   if (index < 0) return false;
   return VIDEO_EXTENSIONS.has(filePath.slice(index).toLowerCase());
+}
+
+function isSupportedImage(filePath) {
+  const index = filePath.lastIndexOf(".");
+  if (index < 0) return false;
+  return IMAGE_EXTENSIONS.has(filePath.slice(index).toLowerCase());
 }
 
 function naturalCompare(left, right) {
@@ -74,10 +103,12 @@ function safeWorkspaceName(value) {
 
 module.exports = {
   VIDEO_EXTENSIONS,
+  IMAGE_EXTENSIONS,
   PLATFORMS,
   normalizePlatform,
   normalizeSettings,
   isSupportedVideo,
+  isSupportedImage,
   naturalCompare,
   videoTitleFromPath,
   safeProfileName,

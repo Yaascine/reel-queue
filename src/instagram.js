@@ -129,6 +129,7 @@ async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
 async function setVideoFile(input, videoPath, page) {
   return setVideoInputFile(input, videoPath, {
     platform: "Instagram",
+    page,
     isAccepted: page
       ? async () => Boolean(await firstVisible([
         ...namedLocators(page, ["Select crop", "Crop", "Change aspect ratio"]),
@@ -286,12 +287,14 @@ async function publishReel({
     onStep("Preparing the video");
     await clickNamed(page, ["Next"], 120_000);
 
-    // The cover picker is on the edit step. It must be handled before the second Next click.
-    stage = "setting the thumbnail";
-    onStep("Setting the thumbnail");
-    const coverApplied = await setCoverFile(page, thumbnailPath);
-    if (!coverApplied) {
-      throw new Error("Instagram did not expose its cover image picker on the edit step. The video was not posted.");
+    // The cover picker is optional. With no chosen image Instagram keeps its automatic video-frame cover.
+    if (thumbnailPath) {
+      stage = "setting the thumbnail";
+      onStep("Setting the thumbnail");
+      const coverApplied = await setCoverFile(page, thumbnailPath);
+      if (!coverApplied) {
+        throw new Error("Instagram did not expose its cover image picker on the edit step. The video was not posted.");
+      }
     }
 
     stage = "opening the caption step";

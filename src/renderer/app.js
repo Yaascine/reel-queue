@@ -4,10 +4,12 @@ const elements = Object.fromEntries(
   [
     "platformNav", "statusDot", "statusTitle", "countdown", "notice", "workspaceTabs", "addWorkspaceButton",
     "removeWorkspaceButton", "workspaceDescription", "setupTitle", "profileSelect", "openLoginButton",
-    "addProfileButton", "removeProfileButton", "intervalInput", "intervalHelp", "folderPath", "folderButton",
-    "folderHelp", "thumbnailField", "thumbnailPath", "thumbnailButton", "captionField", "captionLabel",
-    "captionInput", "captionCount", "youtubeTitleField", "youtubeTitleInput", "youtubeTitleCount",
-    "youtubeDescriptionField", "youtubeDescriptionInput", "youtubeDescriptionCount", "privacyField",
+    "addProfileButton", "removeProfileButton", "intervalInput", "intervalHelp", "randomIntervalEnabled",
+    "randomIntervalRange", "randomIntervalMinInput", "randomIntervalMaxInput", "folderPath", "folderButton",
+    "folderHelp", "thumbnailField", "thumbnailModeSelect", "thumbnailPath", "thumbnailButton", "thumbnailClearButton",
+    "thumbnailHelp", "captionField", "captionLabel", "captionInput", "captionCount", "saveCaptionButton", "captionPool",
+    "youtubeTitleField", "youtubeTitleInput", "youtubeTitleCount", "youtubeDescriptionField", "youtubeDescriptionInput",
+    "youtubeDescriptionCount", "saveDescriptionButton", "descriptionPool", "privacyField",
     "privacySelect", "privacyHelp", "madeForKidsField", "madeForKidsInput", "postedHelp", "safetyCopy",
     "runMessage", "queueCount", "currentFileBlock", "currentFile", "startButton", "stopButton",
     "activityList", "openDiagnosticsButton", "clearLogButton", "profileDialog", "profileDialogCopy",
@@ -42,18 +44,27 @@ function activeWorkspace() { return workspaces.find((workspace) => workspace.id 
 function activeStatus() { return statuses[activeWorkspaceId] || idleStatus(activeWorkspaceId, activePlatform); }
 
 function settingsFromForm() {
+  const workspaceSettings = activeWorkspace()?.settings || {};
+  const thumbnailMode = elements.thumbnailModeSelect.value;
   const base = {
     profileId: elements.profileSelect.value,
     videoFolder: elements.folderPath.value,
-    thumbnailPath: elements.thumbnailPath.value,
+    thumbnailMode,
+    thumbnailPath: thumbnailMode === "single" ? elements.thumbnailPath.value : (workspaceSettings.thumbnailPath || ""),
+    thumbnailFolder: thumbnailMode === "folder" ? elements.thumbnailPath.value : (workspaceSettings.thumbnailFolder || ""),
     caption: elements.captionInput.value,
-    intervalMinutes: Number(elements.intervalInput.value)
+    savedCaptions: workspaceSettings.savedCaptions || [],
+    intervalMinutes: Number(elements.intervalInput.value),
+    randomIntervalEnabled: elements.randomIntervalEnabled.checked,
+    randomIntervalMinMinutes: Number(elements.randomIntervalMinInput.value),
+    randomIntervalMaxMinutes: Number(elements.randomIntervalMaxInput.value)
   };
   if (activePlatform === "youtube") {
     return {
       ...base,
       title: elements.youtubeTitleInput.value,
       description: elements.youtubeDescriptionInput.value,
+      savedDescriptions: workspaceSettings.savedDescriptions || [],
       privacy: elements.privacySelect.value,
       madeForKids: elements.madeForKidsInput.checked
     };
@@ -70,6 +81,65 @@ function showNotice(message, type = "error") {
 
 function hideNotice() { elements.notice.hidden = true; elements.notice.textContent = ""; }
 function errorMessage(error) { return error?.message || String(error || "Something went wrong."); }
+
+function renderTextPool(container, items, settingName) {
+  container.replaceChildren();
+  items.forEach((value, index) => {
+    const row = document.createElement("div");
+    row.className = "text-pool-item";
+    const text = document.createElement("span");
+    text.textContent = value;
+    text.title = value;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-button danger-text";
+    remove.textContent = "Remove";
+    remove.disabled = activeStatus().running;
+    remove.addEventListener("click", async () => {
+      const workspace = activeWorkspace();
+      workspace.settings[settingName] = (workspace.settings[settingName] || []).filter((_entry, itemIndex) => itemIndex !== index);
+      renderTextPools();
+      await saveQuietly();
+    });
+    row.append(text, remove);
+    container.append(row);
+  });
+}
+
+function renderTextPools() {
+  const settings = activeWorkspace()?.settings || {};
+  renderTextPool(elements.captionPool, settings.savedCaptions || [], "savedCaptions");
+  renderTextPool(elements.descriptionPool, settings.savedDescriptions || [], "savedDescriptions");
+}
+
+function syncScheduleControls(running = activeStatus().running) {
+  const enabled = elements.randomIntervalEnabled.checked;
+  elements.randomIntervalRange.hidden = !enabled;
+  elements.intervalInput.disabled = running || enabled;
+  elements.randomIntervalEnabled.disabled = running;
+  elements.randomIntervalMinInput.disabled = running || !enabled;
+  elements.randomIntervalMaxInput.disabled = running || !enabled;
+}
+
+function syncThumbnailControls(running = activeStatus().running) {
+  const mode = elements.thumbnailModeSelect.value;
+  const settings = activeWorkspace()?.settings || {};
+  elements.thumbnailPath.value = mode === "single" ? (settings.thumbnailPath || "")
+    : mode === "folder" ? (settings.thumbnailFolder || "") : "";
+  elements.thumbnailPath.placeholder = mode === "automatic" ? "Instagram will choose automatically"
+    : mode === "folder" ? "No thumbnail folder selected" : "No image selected";
+  elements.thumbnailButton.textContent = mode === "folder" ? "Choose folder" : "Choose image";
+  elements.thumbnailButton.hidden = mode === "automatic";
+  elements.thumbnailClearButton.hidden = mode === "automatic";
+  elements.thumbnailModeSelect.disabled = running;
+  elements.thumbnailButton.disabled = running;
+  elements.thumbnailClearButton.disabled = running || !elements.thumbnailPath.value;
+  elements.thumbnailHelp.textContent = mode === "automatic"
+    ? "No image is required. Instagram will choose a frame from the video."
+    : mode === "folder"
+      ? "For every Reel, one supported image is chosen randomly from this folder."
+      : "The selected image is used for every Reel.";
+}
 function statusClass(status) {
   if (status.mode === "error" || status.mode === "login-required") return "error";
   if (status.running || status.mode === "stopping") return "running";
@@ -170,6 +240,13 @@ function populateForm() {
   elements.privacySelect.value = settings.privacy || "public";
   elements.madeForKidsInput.checked = Boolean(settings.madeForKids);
   elements.intervalInput.value = settings.intervalMinutes;
+  elements.randomIntervalEnabled.checked = Boolean(settings.randomIntervalEnabled);
+  elements.randomIntervalMinInput.value = settings.randomIntervalMinMinutes;
+  elements.randomIntervalMaxInput.value = settings.randomIntervalMaxMinutes;
+  elements.thumbnailModeSelect.value = settings.thumbnailMode || (settings.thumbnailPath ? "single" : "automatic");
+  renderTextPools();
+  syncThumbnailControls();
+  syncScheduleControls();
   elements.workspaceDescription.textContent = `${workspace.name} has its own ${platformName()} account, folder, content details, and posting timer.`;
   renderStatus(activeStatus());
   renderActivity();
@@ -190,9 +267,13 @@ function renderStatus(status) {
   elements.removeProfileButton.disabled = running || !elements.profileSelect.value;
   elements.removeWorkspaceButton.disabled = running || platformWorkspaces().length <= 1;
 
-  [elements.profileSelect, elements.intervalInput, elements.folderButton, elements.thumbnailButton, elements.captionInput,
-    elements.youtubeTitleInput, elements.youtubeDescriptionInput, elements.privacySelect, elements.madeForKidsInput]
+  [elements.profileSelect, elements.folderButton, elements.captionInput, elements.saveCaptionButton,
+    elements.youtubeTitleInput, elements.youtubeDescriptionInput, elements.saveDescriptionButton,
+    elements.privacySelect, elements.madeForKidsInput]
     .forEach((control) => { control.disabled = running; });
+  syncScheduleControls(running);
+  syncThumbnailControls(running);
+  renderTextPools();
 
   if (status.currentFile) {
     elements.currentFile.textContent = status.currentFile.split(/[\\/]/).pop();
@@ -289,9 +370,49 @@ elements.captionInput.addEventListener("input", () => { elements.captionCount.te
 elements.youtubeTitleInput.addEventListener("input", () => { elements.youtubeTitleCount.textContent = `${elements.youtubeTitleInput.value.length} / 100`; });
 elements.youtubeDescriptionInput.addEventListener("input", () => { elements.youtubeDescriptionCount.textContent = `${elements.youtubeDescriptionInput.value.length} / 5000`; });
 elements.folderButton.addEventListener("click", async () => { const selected = await api.chooseVideoFolder(); if (selected) { elements.folderPath.value = selected; await saveQuietly(); } });
-elements.thumbnailButton.addEventListener("click", async () => { const selected = await api.chooseThumbnail(); if (selected) { elements.thumbnailPath.value = selected; await saveQuietly(); } });
+elements.thumbnailButton.addEventListener("click", async () => {
+  const selected = elements.thumbnailModeSelect.value === "folder" ? await api.chooseThumbnailFolder() : await api.chooseThumbnail();
+  if (selected) {
+    elements.thumbnailPath.value = selected;
+    if (elements.thumbnailModeSelect.value === "folder") activeWorkspace().settings.thumbnailFolder = selected;
+    else activeWorkspace().settings.thumbnailPath = selected;
+    syncThumbnailControls();
+    await saveQuietly();
+  }
+});
+elements.thumbnailModeSelect.addEventListener("change", async () => { syncThumbnailControls(); await saveQuietly(); });
+elements.thumbnailClearButton.addEventListener("click", async () => {
+  if (elements.thumbnailModeSelect.value === "folder") activeWorkspace().settings.thumbnailFolder = "";
+  else activeWorkspace().settings.thumbnailPath = "";
+  syncThumbnailControls();
+  await saveQuietly();
+});
+elements.randomIntervalEnabled.addEventListener("change", async () => { syncScheduleControls(); await saveQuietly(); });
+elements.saveCaptionButton.addEventListener("click", async () => {
+  const value = elements.captionInput.value.trim();
+  if (!value) return showNotice("Write a caption before saving it.");
+  const pool = activeWorkspace().settings.savedCaptions || [];
+  if (!pool.includes(value)) pool.push(value);
+  activeWorkspace().settings.savedCaptions = pool;
+  elements.captionInput.value = "";
+  elements.captionCount.textContent = "0 / 2200";
+  renderTextPools();
+  await saveQuietly();
+});
+elements.saveDescriptionButton.addEventListener("click", async () => {
+  const value = elements.youtubeDescriptionInput.value.trim();
+  if (!value) return showNotice("Write a description before saving it.");
+  const pool = activeWorkspace().settings.savedDescriptions || [];
+  if (!pool.includes(value)) pool.push(value);
+  activeWorkspace().settings.savedDescriptions = pool;
+  elements.youtubeDescriptionInput.value = "";
+  elements.youtubeDescriptionCount.textContent = "0 / 5000";
+  renderTextPools();
+  await saveQuietly();
+});
 elements.profileSelect.addEventListener("change", async () => { renderProfiles(elements.profileSelect.value); await saveQuietly(); });
-[elements.intervalInput, elements.captionInput, elements.youtubeTitleInput, elements.youtubeDescriptionInput, elements.privacySelect, elements.madeForKidsInput]
+[elements.intervalInput, elements.randomIntervalMinInput, elements.randomIntervalMaxInput, elements.captionInput,
+  elements.youtubeTitleInput, elements.youtubeDescriptionInput, elements.privacySelect, elements.madeForKidsInput]
   .forEach((control) => control.addEventListener("change", saveQuietly));
 
 elements.addWorkspaceButton.addEventListener("click", () => {

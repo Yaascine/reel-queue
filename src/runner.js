@@ -1,13 +1,25 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { isSupportedVideo, naturalCompare, normalizeSettings, videoTitleFromPath } = require("./shared");
+const { isSupportedImage, isSupportedVideo, naturalCompare, normalizeSettings, videoTitleFromPath } = require("./shared");
 const { publishReel } = require("./instagram");
 const { moveToPosted, prepareVideo } = require("./media");
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function randomChoice(values, random = Math.random) {
+  if (!values.length) return "";
+  return values[Math.min(values.length - 1, Math.floor(random() * values.length))];
+}
+
+function chooseIntervalMinutes(settings, random = Math.random) {
+  if (!settings.randomIntervalEnabled) return settings.intervalMinutes;
+  const minimum = settings.randomIntervalMinMinutes;
+  const maximum = settings.randomIntervalMaxMinutes;
+  return minimum + Math.floor(random() * (maximum - minimum + 1));
+}
+
 class AutomationRunner {
-  constructor({ workspaceId = "", platform = "instagram", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted }) {
+  constructor({ workspaceId = "", platform = "instagram", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted, random = Math.random }) {
     this.workspaceId = workspaceId;
     this.platform = platform;
     this.store = store;
@@ -17,6 +29,7 @@ class AutomationRunner {
     this.mediaPreparer = mediaPreparer;
     this.postedMover = postedMover;
     this.saveSettings = saveSettings || ((settings) => this.store.saveSettings(settings));
+    this.random = random;
     this.profileId = "";
     this.running = false;
     this.stopRequested = false;
@@ -49,16 +62,38 @@ class AutomationRunner {
     if (!profile) throw new Error("Choose an account profile.");
     if (profile.platform && profile.platform !== this.platform) throw new Error("Choose an account profile for this platform.");
     if (!normalized.videoFolder) throw new Error("Choose a video folder.");
-    if (this.platform === "instagram" && !normalized.thumbnailPath) throw new Error("Choose a thumbnail image.");
-    if (this.platform === "instagram" && !normalized.caption.trim()) throw new Error("Enter a caption.");
+    if (normalized.randomIntervalEnabled && normalized.randomIntervalMinMinutes > normalized.randomIntervalMaxMinutes) {
+      throw new Error("The random gap minimum cannot be greater than its maximum.");
+    }
+    if (this.platform === "instagram" && !normalized.caption.trim() && !normalized.savedCaptions.length) {
+      throw new Error("Enter a caption or save at least one caption.");
+    }
 
     const folderStat = await fs.stat(normalized.videoFolder).catch(() => null);
     if (!folderStat?.isDirectory()) throw new Error("The selected video folder is unavailable.");
-    if (this.platform === "instagram") {
+    if (this.platform === "instagram" && normalized.thumbnailMode === "single") {
+      if (!normalized.thumbnailPath) throw new Error("Choose a thumbnail image or use automatic thumbnails.");
       const thumbnailStat = await fs.stat(normalized.thumbnailPath).catch(() => null);
       if (!thumbnailStat?.isFile()) throw new Error("The selected thumbnail is unavailable.");
     }
+    if (this.platform === "instagram" && normalized.thumbnailMode === "folder") {
+      if (!normalized.thumbnailFolder) throw new Error("Choose a thumbnail folder or use automatic thumbnails.");
+      const thumbnailFolderStat = await fs.stat(normalized.thumbnailFolder).catch(() => null);
+      if (!thumbnailFolderStat?.isDirectory()) throw new Error("The selected thumbnail folder is unavailable.");
+      if (!(await this.listThumbnails(normalized.thumbnailFolder)).length) {
+        throw new Error("The thumbnail folder has no supported JPG, PNG, AVIF, HEIC, or HEIF images.");
+      }
+    }
     return normalized;
+  }
+
+  async listThumbnails(folderPath) {
+    if (!folderPath) return [];
+    const entries = await fs.readdir(folderPath, { withFileTypes: true }).catch(() => []);
+    return entries
+      .filter((entry) => entry.isFile() && isSupportedImage(entry.name))
+      .map((entry) => path.join(folderPath, entry.name))
+      .sort(naturalCompare);
   }
 
   async listPending(settings) {
@@ -129,15 +164,27 @@ class AutomationRunner {
 
       try {
         const automaticTitle = videoTitleFromPath(videoPath, this.platform === "youtube" ? 100 : null);
+        let thumbnailPath = settings.thumbnailMode === "single" ? settings.thumbnailPath : "";
+        if (this.platform === "instagram" && settings.thumbnailMode === "folder") {
+          thumbnailPath = randomChoice(await this.listThumbnails(settings.thumbnailFolder), this.random);
+          if (!thumbnailPath) throw new Error("The thumbnail folder no longer contains a supported image.");
+          await this.log("info", `Selected thumbnail ${path.basename(thumbnailPath)}.`, { filePath: thumbnailPath });
+        }
+        const caption = this.platform === "instagram" && settings.savedCaptions.length
+          ? randomChoice(settings.savedCaptions, this.random)
+          : this.platform === "tiktok" ? automaticTitle : settings.caption;
+        const description = this.platform === "youtube" && settings.savedDescriptions.length
+          ? randomChoice(settings.savedDescriptions, this.random)
+          : settings.description;
         this.update({ message: "Opening Chrome" });
         const handle = await this.chrome.open(settings.profileId);
         await this.publisher({
           page: handle.page,
           videoPath: prepared.path,
-          thumbnailPath: settings.thumbnailPath,
-          caption: this.platform === "tiktok" ? automaticTitle : settings.caption,
+          thumbnailPath,
+          caption,
           title: this.platform === "youtube" ? automaticTitle : settings.title,
-          description: settings.description,
+          description,
           privacy: settings.privacy,
           madeForKids: settings.madeForKids,
           screenshotRoot: this.store.screenshotRoot,
@@ -180,11 +227,15 @@ class AutomationRunner {
         return;
       }
 
-      const waitMilliseconds = settings.intervalMinutes * 60_000;
+      const intervalMinutes = chooseIntervalMinutes(settings, this.random);
+      if (settings.randomIntervalEnabled) {
+        await this.log("info", `Random gap selected: ${intervalMinutes} minute(s).`);
+      }
+      const waitMilliseconds = intervalMinutes * 60_000;
       const nextRunAt = Date.now() + waitMilliseconds;
       this.update({
         currentFile: "",
-        message: `Waiting ${settings.intervalMinutes} minute(s)`,
+        message: `Waiting ${intervalMinutes} minute(s)`,
         nextRunAt
       });
 
@@ -216,4 +267,4 @@ class AutomationRunner {
   }
 }
 
-module.exports = { AutomationRunner };
+module.exports = { AutomationRunner, chooseIntervalMinutes, randomChoice };

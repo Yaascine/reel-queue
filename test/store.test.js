@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { AppStore } = require("../src/store");
+const { normalizeSettings } = require("../src/shared");
 
 test("persists settings and separate account profiles", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-store-"));
@@ -53,7 +54,7 @@ test("migrates legacy settings into the first queue and persists independent que
   await store.initialize();
   const [first] = await store.listWorkspaces();
   assert.equal(first.name, "Queue 1");
-  assert.deepEqual({ ...first.settings, profileId: legacy.profileId }, legacy);
+  assert.deepEqual({ ...first.settings, profileId: legacy.profileId }, normalizeSettings(legacy));
   assert.notEqual(first.settings.profileId, "profile-legacy");
 
   const second = await store.createWorkspace("instagram", "MMA clips");

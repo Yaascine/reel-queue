@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("reelQueue", {
   getBootstrap: () => ipcRenderer.invoke("app:bootstrap"),
   chooseVideoFolder: () => ipcRenderer.invoke("dialog:video-folder"),
   chooseThumbnail: () => ipcRenderer.invoke("dialog:thumbnail"),
+  chooseThumbnailFolder: () => ipcRenderer.invoke("dialog:thumbnail-folder"),
   createWorkspace: (platform, name) => ipcRenderer.invoke("workspaces:create", platform, name),
   saveWorkspace: (id, settings) => ipcRenderer.invoke("workspaces:save", id, settings),
   removeWorkspace: (id) => ipcRenderer.invoke("workspaces:remove", id),

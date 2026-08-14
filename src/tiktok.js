@@ -132,6 +132,7 @@ async function publishTikTok({
     }
     await setVideoInputFile(input, videoPath, {
       platform: "TikTok",
+      page,
       isAccepted: async () => Boolean(await firstVisible([
         page.getByRole("textbox", { name: /caption|description/i }),
         page.locator('textarea[placeholder*="caption" i], textarea[placeholder*="description" i]'),

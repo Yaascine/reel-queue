@@ -61,7 +61,15 @@ function registerIpc() {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Choose the Reel thumbnail",
       properties: ["openFile"],
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png"] }]
+      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "avif", "heic", "heif"] }]
+    });
+    return result.canceled ? "" : result.filePaths[0];
+  });
+
+  ipcMain.handle("dialog:thumbnail-folder", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose the Reel thumbnail folder",
+      properties: ["openDirectory", "createDirectory"]
     });
     return result.canceled ? "" : result.filePaths[0];
   });

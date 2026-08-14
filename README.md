@@ -17,16 +17,17 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 1. Select Instagram, YouTube, or TikTok at the top of the app.
 2. Use the first queue or add another queue for a separate niche.
 3. Add an account profile, open that platform's login, and sign in manually in Chrome.
-4. Choose that queue's video folder, content details, visibility where available, and interval.
+4. Choose that queue's video folder, content details, visibility where available, and either a fixed or randomized interval.
 5. Start the queue. Switch platform sections or queue tabs to configure and run others.
 
-Instagram queues use a shared caption and thumbnail, and explicitly select Instagram's **Original** crop. YouTube Short titles come from each source filename with only the final extension removed and are safely trimmed to YouTube's 100-character limit. TikTok captions come from each source filename with only the final extension removed. YouTube and TikTok receive no custom thumbnail, allowing each platform to select a frame from the video. Both platforms default to public visibility, while their queue visibility controls remain available. YouTube Shorts are accepted only when square or vertical and no longer than three minutes.
+Instagram queues explicitly select Instagram's **Original** crop. A queue can let Instagram choose its cover automatically, reuse one image, or randomly select an image from a thumbnail folder for every Reel. It can also use one fixed caption or randomly select from a saved caption pool. YouTube Short titles come from each source filename with only the final extension removed and are safely trimmed to YouTube's 100-character limit; saved description pools can be shuffled per upload, and the uploader selects one of YouTube's generated video-frame thumbnail options when available. TikTok captions come from each source filename with only the final extension removed. Both platforms default to public visibility, while their queue visibility controls remain available. YouTube Shorts are accepted only when square or vertical and no longer than three minutes.
 
 ## Files and safety
 
 - Videos are processed in natural filename order.
 - MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common containers are supported.
 - Compatible H.264/AAC streams are remuxed to MP4 without re-encoding. Incompatible codecs are converted to high-quality H.264/AAC.
+- Files over 50 MB are passed to the local Chrome session directly instead of through Playwright's remote-transfer channel.
 - A source file moves to a `posted` subfolder only after the selected platform shows a positive success confirmation. The folder is created automatically.
 - A missing confirmation, login, verification prompt, or changed upload interface stops the queue and preserves the source file.
 - Failure screenshots and JSON diagnostics are available from **Open diagnostics**.

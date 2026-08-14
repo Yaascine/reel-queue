@@ -149,4 +149,25 @@ test("publishes through the current two-step edit and caption flow", { skip: !fi
     "caption:Reel Queue end-to-end test",
     "share"
   ]);
+
+  const automaticPage = await browser.newPage();
+  const automaticResult = await publishReel({
+    page: automaticPage,
+    videoPath,
+    thumbnailPath: "",
+    caption: "Automatic cover test",
+    screenshotRoot: path.join(temporaryRoot, "diagnostics"),
+    baseUrl: `http://127.0.0.1:${address.port}`
+  });
+  assert.deepEqual(automaticResult, { confirmed: true });
+  assert.deepEqual(await automaticPage.evaluate(() => window.testEvents), [
+    "create-open",
+    "video:test-reel.mp4",
+    "crop-open",
+    "crop:original",
+    "first-next",
+    "second-next",
+    "caption:Automatic cover test",
+    "share"
+  ]);
 });

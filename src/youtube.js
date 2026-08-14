@@ -101,6 +101,7 @@ async function publishYouTubeShort({
     onStep("Loading the video into YouTube (large files can take several minutes)");
     await setVideoInputFile(videoInput, videoPath, {
       platform: "YouTube",
+      page,
       isAccepted: async () => Boolean(await firstVisible([
         page.locator('#title-textarea #textbox'),
         page.locator('[aria-label*="title" i][contenteditable="true"]')
@@ -130,6 +131,10 @@ async function publishYouTubeShort({
     );
     if (descriptionEditor) await fillEditor(descriptionEditor, description);
     await chooseAudience(page, madeForKids);
+
+    stage = "selecting a generated YouTube thumbnail";
+    onStep("Selecting a generated video-frame thumbnail");
+    await chooseGeneratedThumbnail(page);
 
     for (let index = 0; index < 3; index += 1) {
       stage = `opening YouTube upload step ${index + 2}`;
@@ -172,4 +177,24 @@ async function publishYouTubeShort({
   }
 }
 
-module.exports = { DEFAULT_BASE_URL, publishYouTubeShort, openUpload, chooseAudience, chooseVisibility };
+async function chooseGeneratedThumbnail(page, random = Math.random) {
+  const candidates = page.locator([
+    '[id^="still-"]',
+    "ytcp-video-thumbnail-with-info",
+    "ytcp-thumbnail-button:not([disabled])",
+    '[name="VIDEO_THUMBNAIL"] [role="radio"]',
+    '[aria-label*="thumbnail" i][role="radio"]'
+  ].join(", "));
+  const count = await candidates.count().catch(() => 0);
+  if (!count) return false;
+  const firstChoice = Math.min(count - 1, Math.floor(random() * count));
+  for (let offset = 0; offset < count; offset += 1) {
+    const candidate = candidates.nth((firstChoice + offset) % count);
+    if (!(await candidate.isVisible().catch(() => false))) continue;
+    if (!(await candidate.isEnabled().catch(() => true))) continue;
+    if (await candidate.click().then(() => true).catch(() => false)) return true;
+  }
+  return false;
+}
+
+module.exports = { DEFAULT_BASE_URL, publishYouTubeShort, openUpload, chooseAudience, chooseVisibility, chooseGeneratedThumbnail };

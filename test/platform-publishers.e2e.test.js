@@ -15,7 +15,10 @@ document.querySelector('#create').onclick=()=>{ app.innerHTML='<button id="uploa
  app.innerHTML='<input id="file" type="file" accept="video/mp4">'; document.querySelector('#file').onchange=e=>{ window.testEvents.push('file:'+e.target.files[0].name); app.innerHTML=
  '<div id="title-textarea"><div id="textbox" role="textbox" contenteditable="true" aria-label="Title"></div></div>'+ 
  '<div id="description-textarea"><div id="textbox" role="textbox" contenteditable="true" aria-label="Description"></div></div>'+ 
- '<label><input id="kids" type="radio" name="audience">No, it is not made for kids</label><button id="next">Next</button>';
+ '<label><input id="kids" type="radio" name="audience">No, it is not made for kids</label>'+
+ '<button role="radio" aria-label="Thumbnail 1" id="thumb1">Frame 1</button><button role="radio" aria-label="Thumbnail 2" id="thumb2">Frame 2</button><button id="next">Next</button>';
+ document.querySelector('#thumb1').onclick=()=>window.testEvents.push('thumbnail:1');
+ document.querySelector('#thumb2').onclick=()=>window.testEvents.push('thumbnail:2');
  document.querySelector('#next').onclick=()=>next(1); }; }; };
 function next(step){ window.testEvents.push('next:'+step); if(step<3){ document.querySelector('#next').onclick=()=>next(step+1); return; }
  window.testEvents.push('title:'+document.querySelector('#title-textarea #textbox').textContent);
@@ -54,9 +57,10 @@ test("publishes a filename-titled YouTube Short through details, audience, and v
     privacy: "unlisted", madeForKids: false, screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl
   });
   assert.deepEqual(result, { confirmed: true });
-  assert.deepEqual(await data.page.evaluate(() => window.testEvents), [
-    `file:${filenameTitle}.mp4`, "next:1", "next:2", "next:3", `title:${filenameTitle}`, "description:Test description", "visibility:unlisted"
-  ]);
+  const events = await data.page.evaluate(() => window.testEvents);
+  assert.equal(events[0], `file:${filenameTitle}.mp4`);
+  assert.match(events[1], /^thumbnail:[12]$/);
+  assert.deepEqual(events.slice(2), ["next:1", "next:2", "next:3", `title:${filenameTitle}`, "description:Test description", "visibility:unlisted"]);
 });
 
 test("publishes a filename-captioned TikTok with an independent audience", { skip: !findChrome() }, async (t) => {
