@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { chromium } = require("playwright-core");
 const { findChrome } = require("../src/chrome");
-const { publishReel, setVideoFile, VIDEO_FILE_SELECTION_TIMEOUT } = require("../src/instagram");
+const { openComposer, publishReel, setVideoFile, VIDEO_FILE_SELECTION_TIMEOUT } = require("../src/instagram");
 
 const mockInstagram = `<!doctype html>
 <html lang="en">
@@ -102,6 +102,35 @@ test("allows five minutes for Instagram to accept a large video", async () => {
     options: { timeout: VIDEO_FILE_SELECTION_TIMEOUT }
   });
   assert.equal(VIDEO_FILE_SELECTION_TIMEOUT, 300_000);
+});
+
+test("clicks the account-specific Post flyout before looking for the file selector", { skip: !findChrome() }, async (t) => {
+  const html = `<!doctype html><html><body><main id="app"><button aria-label="Create" id="create">Create</button></main><script>
+    window.testEvents=[];
+    document.querySelector('#create').onclick=()=>{
+      window.testEvents.push('create');
+      document.querySelector('#app').innerHTML='<div role="menu"><button role="menuitem" id="post">Post</button></div>';
+      document.querySelector('#post').onclick=()=>{
+        window.testEvents.push('post');
+        document.querySelector('#app').innerHTML='<input id="video" type="file" accept="video/mp4,video/quicktime">';
+      };
+    };
+  </script></body></html>`;
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(html);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  t.after(async () => {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const page = await browser.newPage();
+  const input = await openComposer(page, `http://127.0.0.1:${server.address().port}`);
+  assert.equal(await input.getAttribute("id"), "video");
+  assert.deepEqual(await page.evaluate(() => window.testEvents), ["create", "post"]);
 });
 
 test("publishes through the current two-step edit and caption flow", { skip: !findChrome() }, async (t) => {

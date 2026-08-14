@@ -95,6 +95,10 @@ async function waitForAttachedInput(page, selectors, timeout = 20_000) {
 
 async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
   const root = baseUrl.replace(/\/$/, "");
+  const videoInputSelectors = [
+    '[role="dialog"] input[type="file"][accept*="video" i]',
+    'input[type="file"][accept*="video" i]'
+  ];
 
   // Instagram currently treats /create/select/ as the public @create profile on
   // some accounts. Always open the composer from the signed-in home navigation.
@@ -112,16 +116,29 @@ async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
   );
   if (!createControl) throw new Error("Instagram control not found: Create or New post.");
   await createControl.click();
+
+  // Some accounts open a Create flyout containing a second "Post" choice,
+  // while others go straight to the file selector. Prefer the direct selector
+  // when it appears and only click Post when that intermediate flyout exists.
+  let input = await waitForAttachedInput(page, videoInputSelectors, 1_500);
+  if (input) return input;
+
+  const postChoice = await firstVisible(
+    [
+      page.getByRole("menuitem", { name: /^\s*Post\s*$/i }),
+      page.locator('[role="menu"] [role="button"]').filter({ hasText: /^\s*Post\s*$/i }),
+      page.getByText(/^\s*Post\s*$/i, { exact: true })
+    ],
+    2_500
+  );
+  if (postChoice) {
+    await postChoice.click();
+    input = await waitForAttachedInput(page, videoInputSelectors, 1_500);
+    if (input) return input;
+  }
   await clickIfVisible(page, ["Reel"], 2_000);
 
-  const input = await waitForAttachedInput(
-    page,
-    [
-      '[role="dialog"] input[type="file"][accept*="video" i]',
-      'input[type="file"][accept*="video" i]'
-    ],
-    15_000
-  );
+  input = await waitForAttachedInput(page, videoInputSelectors, 15_000);
   if (!input) throw new Error("Instagram opened the composer but did not provide a video selector.");
   return input;
 }
