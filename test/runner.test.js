@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { AutomationRunner, chooseIntervalMinutes, randomChoice } = require("../src/runner");
+const { AutomationRunner, chooseIntervalSeconds, formatInterval, randomChoice } = require("../src/runner");
 const { ConfirmationError } = require("../src/instagram");
 
 async function fixture() {
@@ -205,11 +205,39 @@ test("randomly chooses an Instagram thumbnail and saved caption for each post", 
 });
 
 test("chooses fixed or inclusive random queue gaps", () => {
-  assert.equal(chooseIntervalMinutes({ intervalMinutes: 20, randomIntervalEnabled: false }), 20);
+  assert.equal(chooseIntervalSeconds({ intervalMinutes: 20, randomIntervalEnabled: false }), 1200);
+  assert.equal(chooseIntervalSeconds({ intervalMinutes: 0, randomIntervalEnabled: false }), 0);
   const settings = { randomIntervalEnabled: true, randomIntervalMinMinutes: 7, randomIntervalMaxMinutes: 12 };
-  assert.equal(chooseIntervalMinutes(settings, () => 0), 7);
-  assert.equal(chooseIntervalMinutes(settings, () => 0.999), 12);
+  assert.equal(chooseIntervalSeconds(settings, () => 0), 420);
+  assert.equal(chooseIntervalSeconds(settings, () => 0.999), 720);
+  assert.equal(chooseIntervalSeconds({ randomIntervalEnabled: true, randomIntervalMinMinutes: 0, randomIntervalMaxMinutes: 1 / 60 }, () => 0.999), 1);
+  assert.equal(formatInterval(0), "no delay");
+  assert.equal(formatInterval(30), "30 second(s)");
+  assert.equal(formatInterval(90), "1 minute(s) 30 second(s)");
   assert.equal(randomChoice(["a", "b"], () => 0.999), "b");
+});
+
+test("runs the next queued post immediately when the gap is zero", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  const secondVideo = path.join(data.root, "video2.mp4");
+  await fs.writeFile(secondVideo, "video");
+  const published = [];
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    publisher: async ({ videoPath }) => { published.push(videoPath); return { confirmed: true }; },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+
+  await runner.start({ ...data.settings, intervalMinutes: 0 });
+  await waitUntilStopped(runner);
+
+  assert.deepEqual(published, [data.videoPath, secondVideo]);
+  assert.equal(runner.getStatus().mode, "complete");
+  assert.equal(data.logs.some((entry) => /starting the next post immediately/i.test(entry.message)), true);
 });
 
 test("rejects landscape videos from a YouTube Shorts queue", async (t) => {

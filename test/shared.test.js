@@ -22,7 +22,9 @@ test("sorts numbered filenames naturally", () => {
 });
 
 test("normalizes interval and caption limits", () => {
-  assert.equal(normalizeSettings({ intervalMinutes: 0 }).intervalMinutes, 1);
+  assert.equal(normalizeSettings({ intervalMinutes: 0 }).intervalMinutes, 0);
+  assert.equal(normalizeSettings({ intervalMinutes: 1 / 60, intervalUnit: "seconds" }).intervalMinutes, 1 / 60);
+  assert.equal(normalizeSettings({ intervalUnit: "seconds" }).intervalUnit, "seconds");
   assert.equal(normalizeSettings({ intervalMinutes: 9999 }).intervalMinutes, 1440);
   assert.equal(normalizeSettings({ caption: "a".repeat(2300) }).caption.length, 2200);
   const random = normalizeSettings({

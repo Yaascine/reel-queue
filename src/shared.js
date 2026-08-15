@@ -18,9 +18,17 @@ function normalizeTextPool(value, maximumLength) {
     .slice(0, 100);
 }
 
-function normalizeMinutes(value, fallback) {
+function normalizeMinutes(value, fallback, unit = "minutes") {
   const minutes = Number(value);
-  return Number.isFinite(minutes) ? Math.min(1440, Math.max(1, Math.round(minutes))) : fallback;
+  // Store gaps as minutes for backward compatibility, but retain whole-second
+  // precision so the interface can offer either minutes or seconds.
+  return Number.isFinite(minutes)
+    ? Math.min(1440, Math.max(0, unit === "seconds" ? Math.round(minutes * 60) / 60 : Math.round(minutes)))
+    : fallback;
+}
+
+function normalizeIntervalUnit(value) {
+  return value === "seconds" ? "seconds" : "minutes";
 }
 
 function normalizePlatform(value) {
@@ -29,15 +37,19 @@ function normalizePlatform(value) {
 
 function normalizeSettings(input = {}, platform = "instagram") {
   const normalizedPlatform = normalizePlatform(platform);
+  const intervalUnit = normalizeIntervalUnit(input.intervalUnit);
+  const randomIntervalUnit = normalizeIntervalUnit(input.randomIntervalUnit);
   const base = {
     profileId: typeof input.profileId === "string" ? input.profileId : "",
     videoFolder: typeof input.videoFolder === "string" ? input.videoFolder : "",
     thumbnailPath: typeof input.thumbnailPath === "string" ? input.thumbnailPath : "",
     caption: typeof input.caption === "string" ? input.caption.slice(0, 2200) : "",
-    intervalMinutes: normalizeMinutes(input.intervalMinutes, 20),
+    intervalMinutes: normalizeMinutes(input.intervalMinutes, 20, intervalUnit),
+    intervalUnit,
     randomIntervalEnabled: Boolean(input.randomIntervalEnabled),
-    randomIntervalMinMinutes: normalizeMinutes(input.randomIntervalMinMinutes, 10),
-    randomIntervalMaxMinutes: normalizeMinutes(input.randomIntervalMaxMinutes, 30),
+    randomIntervalMinMinutes: normalizeMinutes(input.randomIntervalMinMinutes, 10, randomIntervalUnit),
+    randomIntervalMaxMinutes: normalizeMinutes(input.randomIntervalMaxMinutes, 30, randomIntervalUnit),
+    randomIntervalUnit,
     thumbnailMode: ["automatic", "single", "folder"].includes(input.thumbnailMode)
       ? input.thumbnailMode
       : (input.thumbnailFolder ? "folder" : input.thumbnailPath ? "single" : "automatic"),

@@ -17,7 +17,7 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 1. Select Instagram, YouTube, or TikTok at the top of the app.
 2. Use the first queue or add another queue for a separate niche.
 3. Add an account profile, open that platform's login, and sign in manually in Chrome.
-4. Choose that queue's video folder, content details, visibility where available, and either a fixed or randomized interval.
+4. Choose that queue's video folder, content details, visibility where available, and either a fixed or randomized interval. Gaps can use whole minutes or seconds; set the fixed gap to `0` (or the random range to `0–0`) to start the next post immediately.
 5. Start the queue. Switch platform sections or queue tabs to configure and run others.
 
 Instagram queues explicitly select Instagram's **Original** crop. A queue can let Instagram choose its cover automatically, reuse one image, or randomly select an image from a thumbnail folder for every Reel. It can also use one fixed caption or randomly select from a saved caption pool. YouTube Short titles come from each source filename with only the final extension removed and are safely trimmed to YouTube's 100-character limit; saved description pools can be shuffled per upload, and the uploader selects one of YouTube's generated video-frame thumbnail options when available. TikTok captions come from each source filename with only the final extension removed. Both platforms default to public visibility, while their queue visibility controls remain available. YouTube Shorts are accepted only when square or vertical and no longer than three minutes.

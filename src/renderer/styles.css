@@ -215,12 +215,13 @@ textarea { resize: vertical; min-height: 118px; line-height: 1.5; }
 .path-control input { flex: 1; min-width: 0; }
 .number-control span { color: var(--text-soft); font-size: 12px; }
 .number-control input { width: 86px; }
+.unit-select { width: 104px; flex: 0 0 104px; }
 .thumbnail-mode { width: min(100%, 310px); margin-bottom: 9px; }
 .random-interval-field { grid-column: 1 / -1; }
 .random-toggle { border: 1px solid var(--line); }
 .random-range {
   display: grid;
-  grid-template-columns: minmax(150px, 210px) auto minmax(150px, 210px);
+  grid-template-columns: minmax(130px, 190px) auto minmax(130px, 190px) minmax(105px, 125px);
   align-items: end;
   gap: 12px;
   margin-top: 10px;
@@ -234,6 +235,7 @@ textarea { resize: vertical; min-height: 118px; line-height: 1.5; }
 .random-range .number-control { display: flex; }
 .random-range .number-control input { width: 100%; }
 .random-range .number-control small { color: var(--text-soft); white-space: nowrap; }
+.random-unit-field .unit-select { width: 100%; }
 .range-divider { align-self: center; color: var(--text-soft); font-size: 11px; }
 .label-row { justify-content: space-between; }
 .label-row span { color: var(--text-soft); font-size: 11px; }

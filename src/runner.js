@@ -11,11 +11,18 @@ function randomChoice(values, random = Math.random) {
   return values[Math.min(values.length - 1, Math.floor(random() * values.length))];
 }
 
-function chooseIntervalMinutes(settings, random = Math.random) {
-  if (!settings.randomIntervalEnabled) return settings.intervalMinutes;
-  const minimum = settings.randomIntervalMinMinutes;
-  const maximum = settings.randomIntervalMaxMinutes;
+function chooseIntervalSeconds(settings, random = Math.random) {
+  if (!settings.randomIntervalEnabled) return Math.round(settings.intervalMinutes * 60);
+  const minimum = Math.round(settings.randomIntervalMinMinutes * 60);
+  const maximum = Math.round(settings.randomIntervalMaxMinutes * 60);
   return minimum + Math.floor(random() * (maximum - minimum + 1));
+}
+
+function formatInterval(seconds) {
+  if (seconds === 0) return "no delay";
+  if (seconds < 60) return `${seconds} second(s)`;
+  if (seconds % 60 === 0) return `${seconds / 60} minute(s)`;
+  return `${Math.floor(seconds / 60)} minute(s) ${seconds % 60} second(s)`;
 }
 
 class AutomationRunner {
@@ -264,15 +271,20 @@ class AutomationRunner {
         return;
       }
 
-      const intervalMinutes = chooseIntervalMinutes(settings, this.random);
+      const intervalSeconds = chooseIntervalSeconds(settings, this.random);
       if (settings.randomIntervalEnabled) {
-        await this.log("info", `Random gap selected: ${intervalMinutes} minute(s).`);
+        await this.log("info", `Random gap selected: ${formatInterval(intervalSeconds)}.`);
       }
-      const waitMilliseconds = intervalMinutes * 60_000;
+      if (intervalSeconds === 0) {
+        await this.log("info", "No gap selected. Starting the next post immediately.");
+        this.update({ currentFile: "", message: "Starting next post immediately", nextRunAt: null });
+        continue;
+      }
+      const waitMilliseconds = intervalSeconds * 1000;
       const nextRunAt = Date.now() + waitMilliseconds;
       this.update({
         currentFile: "",
-        message: `Waiting ${intervalMinutes} minute(s)`,
+        message: `Waiting ${formatInterval(intervalSeconds)}`,
         nextRunAt
       });
 
@@ -304,4 +316,4 @@ class AutomationRunner {
   }
 }
 
-module.exports = { AutomationRunner, chooseIntervalMinutes, randomChoice };
+module.exports = { AutomationRunner, chooseIntervalSeconds, formatInterval, randomChoice };

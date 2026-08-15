@@ -4,8 +4,8 @@ const elements = Object.fromEntries(
   [
     "platformNav", "statusDot", "statusTitle", "countdown", "notice", "workspaceTabs", "addWorkspaceButton",
     "removeWorkspaceButton", "workspaceDescription", "setupTitle", "profileSelect", "openLoginButton",
-    "addProfileButton", "removeProfileButton", "intervalInput", "intervalHelp", "randomIntervalEnabled",
-    "randomIntervalRange", "randomIntervalMinInput", "randomIntervalMaxInput", "folderPath", "folderButton",
+    "addProfileButton", "removeProfileButton", "intervalInput", "intervalUnitSelect", "intervalHelp", "randomIntervalEnabled",
+    "randomIntervalRange", "randomIntervalMinInput", "randomIntervalMaxInput", "randomIntervalUnitSelect", "folderPath", "folderButton",
     "folderHelp", "thumbnailField", "thumbnailModeSelect", "thumbnailPath", "thumbnailButton", "thumbnailClearButton",
     "thumbnailHelp", "captionField", "captionLabel", "captionInput", "captionCount", "saveCaptionButton", "captionPool",
     "youtubeTitleField", "youtubeTitleInput", "youtubeTitleCount", "youtubeDescriptionField", "youtubeDescriptionInput",
@@ -42,6 +42,17 @@ function platformProfiles() {
 }
 function activeWorkspace() { return workspaces.find((workspace) => workspace.id === activeWorkspaceId) || null; }
 function activeStatus() { return statuses[activeWorkspaceId] || idleStatus(activeWorkspaceId, activePlatform); }
+function minutesFromControl(value, unit) {
+  const amount = Number(value);
+  return unit === "seconds" ? amount / 60 : amount;
+}
+function controlValueFromMinutes(minutes, unit) {
+  return unit === "seconds" ? Math.round(Number(minutes) * 60) : Number(minutes);
+}
+function convertControlUnit(input, previousUnit, nextUnit) {
+  const minutes = minutesFromControl(input.value, previousUnit);
+  input.value = controlValueFromMinutes(minutes, nextUnit);
+}
 
 function settingsFromForm() {
   const workspaceSettings = activeWorkspace()?.settings || {};
@@ -54,10 +65,12 @@ function settingsFromForm() {
     thumbnailFolder: thumbnailMode === "folder" ? elements.thumbnailPath.value : (workspaceSettings.thumbnailFolder || ""),
     caption: elements.captionInput.value,
     savedCaptions: workspaceSettings.savedCaptions || [],
-    intervalMinutes: Number(elements.intervalInput.value),
+    intervalMinutes: minutesFromControl(elements.intervalInput.value, elements.intervalUnitSelect.value),
+    intervalUnit: elements.intervalUnitSelect.value,
     randomIntervalEnabled: elements.randomIntervalEnabled.checked,
-    randomIntervalMinMinutes: Number(elements.randomIntervalMinInput.value),
-    randomIntervalMaxMinutes: Number(elements.randomIntervalMaxInput.value)
+    randomIntervalMinMinutes: minutesFromControl(elements.randomIntervalMinInput.value, elements.randomIntervalUnitSelect.value),
+    randomIntervalMaxMinutes: minutesFromControl(elements.randomIntervalMaxInput.value, elements.randomIntervalUnitSelect.value),
+    randomIntervalUnit: elements.randomIntervalUnitSelect.value
   };
   if (activePlatform === "youtube") {
     return {
@@ -114,11 +127,18 @@ function renderTextPools() {
 
 function syncScheduleControls(running = activeStatus().running) {
   const enabled = elements.randomIntervalEnabled.checked;
+  const fixedMaximum = elements.intervalUnitSelect.value === "seconds" ? 86400 : 1440;
+  const randomMaximum = elements.randomIntervalUnitSelect.value === "seconds" ? 86400 : 1440;
+  elements.intervalInput.max = String(fixedMaximum);
+  elements.randomIntervalMinInput.max = String(randomMaximum);
+  elements.randomIntervalMaxInput.max = String(randomMaximum);
   elements.randomIntervalRange.hidden = !enabled;
   elements.intervalInput.disabled = running || enabled;
+  elements.intervalUnitSelect.disabled = running || enabled;
   elements.randomIntervalEnabled.disabled = running;
   elements.randomIntervalMinInput.disabled = running || !enabled;
   elements.randomIntervalMaxInput.disabled = running || !enabled;
+  elements.randomIntervalUnitSelect.disabled = running || !enabled;
 }
 
 function syncThumbnailControls(running = activeStatus().running) {
@@ -218,7 +238,7 @@ function configurePlatformFields() {
     elements.captionInput.placeholder = "Write the caption used for every Reel";
     elements.folderHelp.textContent = "MKV and other common formats are converted automatically. Instagram's Original crop is selected before posting.";
   }
-  elements.intervalHelp.textContent = `The timer starts after ${name} confirms a successful post.`;
+  elements.intervalHelp.textContent = `The timer starts after ${name} confirms a successful post. Use 0 for no delay.`;
   elements.postedHelp.textContent = `After ${name} confirms the post, the original moves into the folder named posted.`;
   elements.safetyCopy.textContent = `If ${name} requests login or verification, the queue pauses and keeps the source video.`;
 }
@@ -239,10 +259,14 @@ function populateForm() {
   elements.youtubeDescriptionCount.textContent = `${elements.youtubeDescriptionInput.value.length} / 5000`;
   elements.privacySelect.value = settings.privacy || "public";
   elements.madeForKidsInput.checked = Boolean(settings.madeForKids);
-  elements.intervalInput.value = settings.intervalMinutes;
+  elements.intervalUnitSelect.value = settings.intervalUnit || "minutes";
+  elements.intervalUnitSelect.dataset.previousUnit = elements.intervalUnitSelect.value;
+  elements.intervalInput.value = controlValueFromMinutes(settings.intervalMinutes, elements.intervalUnitSelect.value);
   elements.randomIntervalEnabled.checked = Boolean(settings.randomIntervalEnabled);
-  elements.randomIntervalMinInput.value = settings.randomIntervalMinMinutes;
-  elements.randomIntervalMaxInput.value = settings.randomIntervalMaxMinutes;
+  elements.randomIntervalUnitSelect.value = settings.randomIntervalUnit || "minutes";
+  elements.randomIntervalUnitSelect.dataset.previousUnit = elements.randomIntervalUnitSelect.value;
+  elements.randomIntervalMinInput.value = controlValueFromMinutes(settings.randomIntervalMinMinutes, elements.randomIntervalUnitSelect.value);
+  elements.randomIntervalMaxInput.value = controlValueFromMinutes(settings.randomIntervalMaxMinutes, elements.randomIntervalUnitSelect.value);
   elements.thumbnailModeSelect.value = settings.thumbnailMode || (settings.thumbnailPath ? "single" : "automatic");
   renderTextPools();
   syncThumbnailControls();
@@ -388,6 +412,21 @@ elements.thumbnailClearButton.addEventListener("click", async () => {
   await saveQuietly();
 });
 elements.randomIntervalEnabled.addEventListener("change", async () => { syncScheduleControls(); await saveQuietly(); });
+elements.intervalUnitSelect.addEventListener("change", async () => {
+  convertControlUnit(elements.intervalInput, elements.intervalUnitSelect.dataset.previousUnit || "minutes", elements.intervalUnitSelect.value);
+  elements.intervalUnitSelect.dataset.previousUnit = elements.intervalUnitSelect.value;
+  syncScheduleControls();
+  await saveQuietly();
+});
+elements.randomIntervalUnitSelect.addEventListener("change", async () => {
+  const previousUnit = elements.randomIntervalUnitSelect.dataset.previousUnit || "minutes";
+  const nextUnit = elements.randomIntervalUnitSelect.value;
+  convertControlUnit(elements.randomIntervalMinInput, previousUnit, nextUnit);
+  convertControlUnit(elements.randomIntervalMaxInput, previousUnit, nextUnit);
+  elements.randomIntervalUnitSelect.dataset.previousUnit = nextUnit;
+  syncScheduleControls();
+  await saveQuietly();
+});
 elements.saveCaptionButton.addEventListener("click", async () => {
   const value = elements.captionInput.value.trim();
   if (!value) return showNotice("Write a caption before saving it.");

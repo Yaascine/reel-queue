@@ -65,10 +65,13 @@
             <div class="field interval-field">
               <label for="intervalInput">Gap between posts</label>
               <div class="number-control">
-                <input id="intervalInput" type="number" min="1" max="1440" step="1" value="20" />
-                <span>minutes</span>
+                <input id="intervalInput" type="number" min="0" max="1440" step="1" value="20" />
+                <select id="intervalUnitSelect" class="unit-select" aria-label="Gap time unit">
+                  <option value="minutes">minutes</option>
+                  <option value="seconds">seconds</option>
+                </select>
               </div>
-              <p id="intervalHelp" class="helper">The timer starts after Instagram confirms a successful post.</p>
+              <p id="intervalHelp" class="helper">Use 0 to start the next post immediately.</p>
             </div>
 
             <div class="field random-interval-field">
@@ -76,18 +79,25 @@
                 <input id="randomIntervalEnabled" type="checkbox" />
                 <span>
                   <strong>Randomize the gap</strong>
-                  <small>Choose a new whole-minute delay after every successful post.</small>
+                  <small>Choose a new delay after every successful post.</small>
                 </span>
               </label>
               <div id="randomIntervalRange" class="random-range" hidden>
                 <label>
                   <span>Minimum</span>
-                  <span class="number-control"><input id="randomIntervalMinInput" type="number" min="1" max="1440" step="1" value="10" /><small>minutes</small></span>
+                  <span class="number-control"><input id="randomIntervalMinInput" type="number" min="0" max="1440" step="1" value="10" /></span>
                 </label>
                 <span class="range-divider" aria-hidden="true">to</span>
                 <label>
                   <span>Maximum</span>
-                  <span class="number-control"><input id="randomIntervalMaxInput" type="number" min="1" max="1440" step="1" value="30" /><small>minutes</small></span>
+                  <span class="number-control"><input id="randomIntervalMaxInput" type="number" min="0" max="1440" step="1" value="30" /></span>
+                </label>
+                <label class="random-unit-field">
+                  <span>Unit</span>
+                  <select id="randomIntervalUnitSelect" class="unit-select" aria-label="Random gap time unit">
+                    <option value="minutes">minutes</option>
+                    <option value="seconds">seconds</option>
+                  </select>
                 </label>
               </div>
             </div>
