@@ -1,10 +1,46 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { normalizePlatform, normalizeSettings, safeProfileName, safeWorkspaceName } = require("./shared");
+const {
+  DAILY_UPLOAD_LIMIT,
+  UPLOAD_WINDOW_MS,
+  normalizePlatform,
+  normalizeSettings,
+  safeProfileName,
+  safeWorkspaceName
+} = require("./shared");
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const RETRYABLE_FILE_ERRORS = new Set(["EACCES", "EBUSY", "EEXIST", "EPERM"]);
+
+function summarizeUploadAllowance(history, profileId, now = Date.now()) {
+  const acceptedByUpload = new Map();
+  for (const entry of history) {
+    if (entry?.profileId !== profileId || !["posted", "submitted"].includes(entry.status)) continue;
+    const acceptedAt = Date.parse(entry.createdAt);
+    if (!Number.isFinite(acceptedAt)) continue;
+    // A normal upload has a submitted entry followed by a posted entry. Treat
+    // both as one upload and keep the first accepted timestamp.
+    const uploadKey = `${entry.workspaceId || ""}\0${entry.filePath || entry.id || ""}`;
+    const existing = acceptedByUpload.get(uploadKey);
+    if (existing === undefined || acceptedAt < existing) acceptedByUpload.set(uploadKey, acceptedAt);
+  }
+
+  const cutoff = now - UPLOAD_WINDOW_MS;
+  const recentUploads = [...acceptedByUpload.values()]
+    // If the system clock moved backward, count future-dated records as newly
+    // accepted instead of accidentally opening extra upload slots.
+    .map((acceptedAt) => Math.min(acceptedAt, now))
+    .filter((acceptedAt) => acceptedAt > cutoff)
+    .sort((left, right) => left - right);
+  const count = recentUploads.length;
+  // Once the account reaches its 22-upload batch, start one full 24-hour
+  // cooldown from the newest accepted upload—not from the oldest slot.
+  const nextAllowedAt = count >= DAILY_UPLOAD_LIMIT
+    ? recentUploads[recentUploads.length - 1] + UPLOAD_WINDOW_MS
+    : null;
+  return { allowed: count < DAILY_UPLOAD_LIMIT, count, limit: DAILY_UPLOAD_LIMIT, nextAllowedAt };
+}
 
 async function replaceFileWithRetry(fileSystem, temporaryPath, filePath, attempts = 40) {
   let lastError;
@@ -364,11 +400,20 @@ class AppStore {
     );
   }
 
+  async getUploadAllowance(profileId, now = Date.now()) {
+    return summarizeUploadAllowance(await this.getHistory(), profileId, now);
+  }
+
   async addHistory(entry) {
     await this.queueWrite(this.historyPath, async () => {
       const history = await this.getHistory();
       history.unshift({ id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...entry });
-      await this.writeJson(this.historyPath, history.slice(0, 2000));
+      // Always retain the complete active quota window, even with many account
+      // profiles. Older diagnostic history remains capped.
+      const cutoff = Date.now() - UPLOAD_WINDOW_MS;
+      const recent = history.filter((item) => Date.parse(item.createdAt) > cutoff);
+      const older = history.filter((item) => !(Date.parse(item.createdAt) > cutoff)).slice(0, 2000);
+      await this.writeJson(this.historyPath, [...recent, ...older]);
     });
   }
 
@@ -379,4 +424,4 @@ class AppStore {
   }
 }
 
-module.exports = { AppStore, replaceFileWithRetry };
+module.exports = { AppStore, replaceFileWithRetry, summarizeUploadAllowance };

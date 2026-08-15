@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { isSupportedImage, isSupportedVideo, naturalCompare, normalizeSettings, videoTitleFromPath } = require("./shared");
+const { DAILY_UPLOAD_LIMIT, isSupportedImage, isSupportedVideo, naturalCompare, normalizeSettings, videoTitleFromPath } = require("./shared");
 const { publishReel } = require("./instagram");
 const { moveToPosted, prepareVideo } = require("./media");
 
@@ -26,7 +26,7 @@ function formatInterval(seconds) {
 }
 
 class AutomationRunner {
-  constructor({ workspaceId = "", platform = "instagram", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted, random = Math.random }) {
+  constructor({ workspaceId = "", platform = "instagram", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted, random = Math.random, now = Date.now, sleeper = sleep }) {
     this.workspaceId = workspaceId;
     this.platform = platform;
     this.store = store;
@@ -37,6 +37,8 @@ class AutomationRunner {
     this.postedMover = postedMover;
     this.saveSettings = saveSettings || ((settings) => this.store.saveSettings(settings));
     this.random = random;
+    this.now = now;
+    this.sleep = sleeper;
     this.profileId = "";
     this.running = false;
     this.stopRequested = false;
@@ -45,7 +47,9 @@ class AutomationRunner {
       message: "Ready",
       currentFile: "",
       queueCount: 0,
-      nextRunAt: null
+      nextRunAt: null,
+      dailyUploadCount: 0,
+      dailyUploadLimit: DAILY_UPLOAD_LIMIT
     };
   }
 
@@ -143,6 +147,33 @@ class AutomationRunner {
     return this.getStatus();
   }
 
+  async waitForUploadCapacity(settings) {
+    let loggedNextAllowedAt = null;
+    while (!this.stopRequested) {
+      const allowance = await this.store.getUploadAllowance(settings.profileId, this.now());
+      this.update({ dailyUploadCount: allowance.count, dailyUploadLimit: allowance.limit });
+      if (allowance.allowed) return true;
+
+      const nextRunAt = Math.max(this.now() + 1000, allowance.nextAllowedAt || this.now() + 1000);
+      if (loggedNextAllowedAt !== nextRunAt) {
+        loggedNextAllowedAt = nextRunAt;
+        await this.log(
+          "warning",
+          `Daily account limit reached (${allowance.count}/${allowance.limit}). The queue will resume automatically when the 24-hour cooldown ends.`
+        );
+      }
+      this.update({
+        currentFile: "",
+        message: `Daily limit reached (${allowance.count}/${allowance.limit})`,
+        nextRunAt
+      });
+      while (!this.stopRequested && this.now() < nextRunAt) {
+        await this.sleep(Math.min(1000, nextRunAt - this.now()));
+      }
+    }
+    return false;
+  }
+
   async runLoop(settings) {
     while (!this.stopRequested) {
       const pending = await this.listPending(settings);
@@ -153,6 +184,7 @@ class AutomationRunner {
         this.update({ mode: "complete", message: "Queue complete", currentFile: "", nextRunAt: null });
         return;
       }
+      if (!(await this.waitForUploadCapacity(settings))) break;
 
       const videoPath = pending[0];
       this.update({ currentFile: videoPath, message: "Checking video format", nextRunAt: null });
@@ -281,15 +313,15 @@ class AutomationRunner {
         continue;
       }
       const waitMilliseconds = intervalSeconds * 1000;
-      const nextRunAt = Date.now() + waitMilliseconds;
+      const nextRunAt = this.now() + waitMilliseconds;
       this.update({
         currentFile: "",
         message: `Waiting ${formatInterval(intervalSeconds)}`,
         nextRunAt
       });
 
-      while (!this.stopRequested && Date.now() < nextRunAt) {
-        await sleep(Math.min(1000, nextRunAt - Date.now()));
+      while (!this.stopRequested && this.now() < nextRunAt) {
+        await this.sleep(Math.min(1000, nextRunAt - this.now()));
       }
     }
 

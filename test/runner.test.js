@@ -22,6 +22,7 @@ async function fixture() {
     saveSettings: async (settings) => settings,
     hasSuccessfulPost: async (profileId, filePath) =>
       history.some((entry) => entry.profileId === profileId && entry.filePath === filePath),
+    getUploadAllowance: async () => ({ allowed: true, count: 0, limit: 22, nextAllowedAt: null }),
     addHistory: async (entry) => history.push(entry),
     appendLog: async (level, message, details) => {
       const entry = { at: new Date().toISOString(), level, message, ...details };
@@ -238,6 +239,33 @@ test("runs the next queued post immediately when the gap is zero", async (t) => 
   assert.deepEqual(published, [data.videoPath, secondVideo]);
   assert.equal(runner.getStatus().mode, "complete");
   assert.equal(data.logs.some((entry) => /starting the next post immediately/i.test(entry.message)), true);
+});
+
+test("waits for the account cooldown before uploading", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  let currentTime = 1_000;
+  let publishCalls = 0;
+  data.store.getUploadAllowance = async () => currentTime < 5_000
+    ? { allowed: false, count: 22, limit: 22, nextAllowedAt: 5_000 }
+    : { allowed: true, count: 0, limit: 22, nextAllowedAt: null };
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    now: () => currentTime,
+    sleeper: async (milliseconds) => { currentTime += milliseconds; },
+    publisher: async () => { publishCalls += 1; return { confirmed: true }; },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+
+  await runner.start(data.settings);
+  await waitUntilStopped(runner);
+
+  assert.equal(publishCalls, 1);
+  assert.equal(currentTime, 5_000);
+  assert.equal(data.logs.some((entry) => /daily account limit reached \(22\/22\)/i.test(entry.message)), true);
 });
 
 test("rejects landscape videos from a YouTube Shorts queue", async (t) => {

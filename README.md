@@ -22,6 +22,8 @@ Download the ready-to-run macOS DMG or Windows installer from the [latest GitHub
 
 Instagram queues explicitly select Instagram's **Original** crop. A queue can let Instagram choose its cover automatically, reuse one image, or randomly select an image from a thumbnail folder for every Reel. It can also use one fixed caption or randomly select from a saved caption pool. YouTube Short titles come from each source filename with only the final extension removed and are safely trimmed to YouTube's 100-character limit; saved description pools can be shuffled per upload, and the uploader selects one of YouTube's generated video-frame thumbnail options when available. TikTok captions come from each source filename with only the final extension removed. Both platforms default to public visibility, while their queue visibility controls remain available. YouTube Shorts are accepted only when square or vertical and no longer than three minutes.
 
+Reel Queue allows up to 22 accepted uploads per account profile, then starts a full 24-hour cooldown from that account's newest (22nd) accepted upload. When the cooldown ends, that account receives a fresh allowance of 22 and its queue resumes automatically; other account profiles continue independently. This limit tracks uploads made by Reel Queue, not posts made manually outside the app.
+
 ## Files and safety
 
 - Videos are processed in natural filename order.

@@ -274,6 +274,7 @@ textarea { resize: vertical; min-height: 118px; line-height: 1.5; }
 .check-row input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--accent); }
 .check-row strong { display: block; font-size: 12px; }
 .check-row small { display: block; margin-top: 3px; color: var(--text-soft); line-height: 1.45; }
+.quota-rule { margin-top: -8px; border-left: 3px solid var(--accent); }
 
 .pool-actions { display: flex; align-items: center; gap: 12px; margin-top: 9px; }
 .pool-actions .helper { margin-top: 0; }

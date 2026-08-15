@@ -8,6 +8,8 @@ const VIDEO_EXTENSIONS = new Set([
 
 const PLATFORMS = new Set(["instagram", "youtube", "tiktok"]);
 const IMAGE_EXTENSIONS = new Set([".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png"]);
+const DAILY_UPLOAD_LIMIT = 22;
+const UPLOAD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function normalizeTextPool(value, maximumLength) {
   if (!Array.isArray(value)) return [];
@@ -117,6 +119,8 @@ module.exports = {
   VIDEO_EXTENSIONS,
   IMAGE_EXTENSIONS,
   PLATFORMS,
+  DAILY_UPLOAD_LIMIT,
+  UPLOAD_WINDOW_MS,
   normalizePlatform,
   normalizeSettings,
   isSupportedVideo,

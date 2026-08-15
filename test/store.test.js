@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { AppStore, replaceFileWithRetry } = require("../src/store");
+const { AppStore, replaceFileWithRetry, summarizeUploadAllowance } = require("../src/store");
 const { normalizeSettings } = require("../src/shared");
 
 test("persists settings and separate account profiles", async (t) => {
@@ -60,6 +60,50 @@ test("uses collision-safe temporary names for concurrent JSON writes", async (t)
   const result = JSON.parse(await fs.readFile(target, "utf8"));
   assert.equal(Number.isInteger(result[0].index), true);
   assert.deepEqual((await fs.readdir(root)).filter((name) => name.endsWith(".tmp")), []);
+});
+
+test("starts a 24-hour cooldown from an account's newest upload after upload 22", () => {
+  const now = Date.parse("2026-08-15T12:00:00.000Z");
+  const recentUploads = Array.from({ length: 22 }, (_entry, index) => ({
+    id: `submitted-${index}`,
+    workspaceId: "queue-1",
+    profileId: "account-1",
+    filePath: `/videos/${index}.mp4`,
+    status: "submitted",
+    createdAt: new Date(now - (23 * 60 * 60 * 1000) + (index * 1000)).toISOString()
+  }));
+  const duplicatePostedEntries = recentUploads.map((entry, index) => ({
+    ...entry,
+    id: `posted-${index}`,
+    status: "posted",
+    createdAt: new Date(Date.parse(entry.createdAt) + 500).toISOString()
+  }));
+  const ignored = [
+    { ...recentUploads[0], id: "other-account", profileId: "account-2", filePath: "/other.mp4" },
+    { ...recentUploads[0], id: "expired", filePath: "/old.mp4", createdAt: new Date(now - (25 * 60 * 60 * 1000)).toISOString() }
+  ];
+
+  const blocked = summarizeUploadAllowance([...recentUploads, ...duplicatePostedEntries, ...ignored], "account-1", now);
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.count, 22);
+  assert.equal(blocked.limit, 22);
+  assert.equal(blocked.nextAllowedAt, Date.parse(recentUploads[21].createdAt) + (24 * 60 * 60 * 1000));
+
+  const afterCooldown = summarizeUploadAllowance(
+    [...recentUploads, ...duplicatePostedEntries, ...ignored],
+    "account-1",
+    blocked.nextAllowedAt
+  );
+  assert.equal(afterCooldown.allowed, true);
+  assert.equal(afterCooldown.count, 0);
+  assert.equal(summarizeUploadAllowance(recentUploads, "account-2", now).count, 0);
+
+  const excess = summarizeUploadAllowance([
+    ...recentUploads,
+    { ...recentUploads[21], id: "extra", filePath: "/videos/extra.mp4", createdAt: new Date(now - 500).toISOString() }
+  ], "account-1", now);
+  assert.equal(excess.count, 23);
+  assert.equal(excess.nextAllowedAt, now - 500 + (24 * 60 * 60 * 1000));
 });
 
 test("migrates legacy settings into the first queue and persists independent queues", async (t) => {
