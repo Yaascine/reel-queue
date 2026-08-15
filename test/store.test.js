@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { AppStore } = require("../src/store");
+const { AppStore, replaceFileWithRetry } = require("../src/store");
 const { normalizeSettings } = require("../src/shared");
 
 test("persists settings and separate account profiles", async (t) => {
@@ -35,6 +35,31 @@ test("rejects duplicate account profile names", async (t) => {
   await store.createProfile("instagram", "Main");
   await assert.rejects(() => store.createProfile("instagram", "main"), /already exists/i);
   await store.createProfile("youtube", "Main");
+});
+
+test("retries Windows-style EPERM errors while replacing JSON files", async () => {
+  let attempts = 0;
+  const fileSystem = {
+    async rename() {
+      attempts += 1;
+      if (attempts < 3) throw Object.assign(new Error("temporarily locked"), { code: "EPERM" });
+    },
+    async copyFile() {},
+    async rm() {}
+  };
+  await replaceFileWithRetry(fileSystem, "history.unique.tmp", "history.json", 5);
+  assert.equal(attempts, 3);
+});
+
+test("uses collision-safe temporary names for concurrent JSON writes", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-store-write-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = new AppStore(root);
+  const target = path.join(root, "history.json");
+  await Promise.all(Array.from({ length: 12 }, (_entry, index) => store.writeJson(target, [{ index }])));
+  const result = JSON.parse(await fs.readFile(target, "utf8"));
+  assert.equal(Number.isInteger(result[0].index), true);
+  assert.deepEqual((await fs.readdir(root)).filter((name) => name.endsWith(".tmp")), []);
 });
 
 test("migrates legacy settings into the first queue and persists independent queues", async (t) => {

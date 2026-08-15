@@ -28,7 +28,9 @@ Instagram queues explicitly select Instagram's **Original** crop. A queue can le
 - MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common containers are supported.
 - Compatible H.264/AAC streams are remuxed to MP4 without re-encoding. Incompatible codecs are converted to high-quality H.264/AAC.
 - Files over 50 MB are passed to the local Chrome session directly instead of through Playwright's remote-transfer channel.
-- A source file moves to a `posted` subfolder only after the selected platform shows a positive success confirmation. The folder is created automatically.
+- Upload, processing, and final-confirmation waits do not expire while Chrome remains open, so slow connections are not treated as failures.
+- A source file moves to a `posted` subfolder after positive confirmation, or after the platform accepted the final submission click but its success screen could not be read. The folder is created automatically.
+- The app records the platform's final submission handoff before waiting for the success screen. If that screen changes or Windows briefly locks the history file, the source is still moved and excluded from retry to prevent duplicate posts.
 - A missing confirmation, login, verification prompt, or changed upload interface stops the queue and preserves the source file.
 - Failure screenshots and JSON diagnostics are available from **Open diagnostics**.
 - Passwords are never stored by Reel Queue. Each profile has a separate local Chrome session.

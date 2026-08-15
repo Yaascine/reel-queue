@@ -106,8 +106,8 @@ class ChromeManager {
     const context = browser.contexts()[0];
     if (!context) throw new Error("Chrome opened without an available browser session.");
 
-    context.setDefaultTimeout(20_000);
-    context.setDefaultNavigationTimeout(45_000);
+    context.setDefaultTimeout(0);
+    context.setDefaultNavigationTimeout(0);
     const page = context.pages()[0] || (await context.newPage());
     const handle = { browser, context, page, profile, chromeProcess };
     this.contexts.set(profileId, handle);
@@ -129,8 +129,8 @@ class ChromeManager {
       youtube: "https://studio.youtube.com/",
       tiktok: "https://www.tiktok.com/tiktokstudio/upload?lang=en"
     };
-    await handle.page.goto(loginUrls[platform] || loginUrls.instagram, { waitUntil: "commit", timeout: 60_000 });
-    await handle.page.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => {});
+    await handle.page.goto(loginUrls[platform] || loginUrls.instagram, { waitUntil: "commit", timeout: 0 });
+    await handle.page.waitForLoadState("domcontentloaded", { timeout: 0 }).catch(() => {});
     return true;
   }
 

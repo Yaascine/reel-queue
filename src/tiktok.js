@@ -11,6 +11,28 @@ const { setVideoInputFile } = require("./file-upload");
 
 const DEFAULT_BASE_URL = "https://www.tiktok.com/tiktokstudio/upload?lang=en";
 
+async function dismissTikTokOverlays(page) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const overlay = page.locator('#react-joyride-portal, [data-test-id="overlay"], .react-joyride__overlay').first();
+    if (!(await overlay.isVisible({ timeout: 250 }).catch(() => false))) return true;
+
+    const dismiss = await firstVisible(
+      namedLocators(page, ["Skip", "Skip tour", "Got it", "Done", "Close", "Next"], ["button", "link"]),
+      750
+    );
+    if (dismiss) {
+      await dismiss.click({ force: true, timeout: 2_000 }).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      continue;
+    }
+
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.locator("#react-joyride-portal").evaluate((element) => element.remove()).catch(() => {});
+    await page.locator('[data-test-id="overlay"], .react-joyride__overlay').evaluateAll((elements) => elements.forEach((element) => element.remove())).catch(() => {});
+  }
+  return !(await page.locator('[data-test-id="overlay"], .react-joyride__overlay').first().isVisible({ timeout: 250 }).catch(() => false));
+}
+
 async function assertTikTokLogin(page) {
   if (/\/login|login\.tiktok\.com/i.test(page.url())) {
     throw new LoginRequiredError("TikTok login is required for this account profile. Open TikTok login, sign in, and try again.");
@@ -19,8 +41,8 @@ async function assertTikTokLogin(page) {
   if (login) throw new LoginRequiredError("TikTok login is required for this account profile. Open TikTok login, sign in, and try again.");
 }
 
-async function waitForVideoInput(page, timeout = 30_000) {
-  const deadline = Date.now() + timeout;
+async function waitForVideoInput(page, timeout = 0) {
+  const deadline = timeout > 0 ? Date.now() + timeout : Number.POSITIVE_INFINITY;
   while (Date.now() < deadline) {
     await assertTikTokLogin(page);
     const input = await waitForAttachedInput(
@@ -34,6 +56,7 @@ async function waitForVideoInput(page, timeout = 30_000) {
 }
 
 async function fillCaption(page, caption) {
+  await dismissTikTokOverlays(page);
   const editor = await firstVisible(
     [
       page.getByRole("textbox", { name: /caption|description/i }),
@@ -41,10 +64,10 @@ async function fillCaption(page, caption) {
       page.locator('[contenteditable="true"][data-placeholder*="caption" i]'),
       page.locator('[contenteditable="true"]').first()
     ],
-    60_000
+    0
   );
   if (!editor) throw new Error("TikTok caption field was not found.");
-  await editor.click();
+  await editor.click({ force: true, timeout: 0 });
   await editor.fill(caption).catch(async () => {
     const modifier = process.platform === "darwin" ? "Meta" : "Control";
     await editor.press(`${modifier}+A`);
@@ -54,6 +77,7 @@ async function fillCaption(page, caption) {
 }
 
 async function choosePrivacy(page, privacy) {
+  await dismissTikTokOverlays(page);
   const labels = { public: ["Everyone", "Public"], friends: ["Friends"], private: ["Only you", "Private"] };
   const requested = labels[privacy] || labels.public;
   const current = await firstVisible(
@@ -62,14 +86,14 @@ async function choosePrivacy(page, privacy) {
       ...namedLocators(page, ["Everyone", "Public", "Friends", "Only you", "Private"]),
       page.getByText(/who can (view|watch) this (video|post)/i)
     ],
-    20_000
+    0
   );
   if (!current) {
     if (privacy === "public") return;
     throw new Error(`TikTok privacy control was not found: ${privacy}.`);
   }
   await current.click();
-  const option = await firstVisible(namedLocators(page, requested, ["option", "menuitem", "radio", "button"]), 8_000);
+  const option = await firstVisible(namedLocators(page, requested, ["option", "menuitem", "radio", "button"]), 0);
   if (!option) {
     const textOption = await firstVisible(requested.map((label) => page.getByText(new RegExp(`^\\s*${label}\\s*$`, "i"), { exact: true })), 3_000);
     if (!textOption) throw new Error(`TikTok privacy option was not found: ${privacy}.`);
@@ -79,10 +103,11 @@ async function choosePrivacy(page, privacy) {
   await option.click();
 }
 
-async function waitForPostConfirmation(page, caption, privacy, timeout = 180_000) {
-  const deadline = Date.now() + timeout;
+async function waitForPostConfirmation(page, caption, privacy, timeout = 0) {
+  const deadline = timeout > 0 ? Date.now() + timeout : Number.POSITIVE_INFINITY;
   const expectedPrivacy = { public: /everyone|public/i, friends: /friends/i, private: /only you|private/i }[privacy] || /everyone|public/i;
   while (Date.now() < deadline) {
+    await clickIfVisible(page, ["Post now", "Post anyway", "Confirm"], 500);
     const confirmation = await firstVisible(
       [
         page.getByText(/your video (has been|was) (uploaded|posted|published)/i),
@@ -112,6 +137,7 @@ async function publishTikTok({
   caption,
   privacy = "public",
   screenshotRoot,
+  onSubmitted = async () => {},
   onStep = () => {},
   baseUrl = DEFAULT_BASE_URL
 }) {
@@ -119,8 +145,8 @@ async function publishTikTok({
   try {
     onStep("Opening TikTok Studio");
     await page.bringToFront();
-    await page.goto(baseUrl, { waitUntil: "commit", timeout: 60_000 });
-    await page.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => {});
+    await page.goto(baseUrl, { waitUntil: "commit", timeout: 0 });
+    await page.waitForLoadState("domcontentloaded", { timeout: 0 }).catch(() => {});
     await assertTikTokLogin(page);
 
     stage = "selecting the video";
@@ -149,21 +175,19 @@ async function publishTikTok({
 
     stage = "posting to TikTok";
     onStep("Posting to TikTok");
-    const post = await firstVisible(namedLocators(page, ["Post", "Publish"]), 120_000);
+    await dismissTikTokOverlays(page);
+    const post = await firstVisible(namedLocators(page, ["Post", "Publish"]), 0);
     if (!post) throw new Error("TikTok Studio post control was not found.");
-    await post.waitFor({ state: "visible", timeout: 120_000 });
-    const readyDeadline = Date.now() + 180_000;
-    while (Date.now() < readyDeadline) {
+    await post.waitFor({ state: "visible", timeout: 0 });
+    while (true) {
       const disabled = await post.getAttribute("aria-disabled");
       const nativeDisabled = await post.isDisabled().catch(() => false);
       if (disabled !== "true" && !nativeDisabled) break;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    if ((await post.getAttribute("aria-disabled")) === "true" || (await post.isDisabled().catch(() => false))) {
-      throw new Error("TikTok finished uploading the video but did not enable the Post button.");
-    }
-    await post.click();
+    await post.click({ timeout: 0 });
     await clickIfVisible(page, ["Post now", "Post anyway", "Confirm"], 5_000);
+    await onSubmitted();
 
     stage = "waiting for TikTok confirmation";
     onStep("Waiting for TikTok confirmation");
@@ -181,4 +205,4 @@ async function publishTikTok({
   }
 }
 
-module.exports = { DEFAULT_BASE_URL, publishTikTok, assertTikTokLogin, waitForVideoInput, fillCaption, choosePrivacy, waitForPostConfirmation };
+module.exports = { DEFAULT_BASE_URL, publishTikTok, assertTikTokLogin, waitForVideoInput, fillCaption, choosePrivacy, waitForPostConfirmation, dismissTikTokOverlays };

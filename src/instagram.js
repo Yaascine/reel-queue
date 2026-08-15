@@ -24,8 +24,12 @@ function escapePattern(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function isTerminalBrowserError(error) {
+  return /browser has been closed|page has been closed|target page.*closed|target closed|crashed/i.test(error?.message || "");
+}
+
 async function firstVisible(locators, timeout = 12_000) {
-  const deadline = Date.now() + timeout;
+  const deadline = timeout > 0 ? Date.now() + timeout : Number.POSITIVE_INFINITY;
   while (Date.now() < deadline) {
     for (const locator of locators) {
       try {
@@ -34,7 +38,8 @@ async function firstVisible(locators, timeout = 12_000) {
           const candidate = locator.nth(index);
           if (await candidate.isVisible({ timeout: 250 })) return candidate;
         }
-      } catch {
+      } catch (error) {
+        if (isTerminalBrowserError(error)) throw error;
         // Instagram frequently replaces the composer DOM while media is processing.
       }
     }
@@ -81,11 +86,14 @@ async function assertLoggedIn(page) {
 }
 
 async function waitForAttachedInput(page, selectors, timeout = 20_000) {
-  const deadline = Date.now() + timeout;
+  const deadline = timeout > 0 ? Date.now() + timeout : Number.POSITIVE_INFINITY;
   while (Date.now() < deadline) {
     for (const selector of selectors) {
       const locator = page.locator(selector);
-      const count = await locator.count().catch(() => 0);
+      const count = await locator.count().catch((error) => {
+        if (isTerminalBrowserError(error)) throw error;
+        return 0;
+      });
       if (count) return locator.nth(count - 1);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -112,7 +120,7 @@ async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
       page.locator('[aria-label="Create"], [aria-label="New post"]'),
       page.locator('a[href*="/create/"]')
     ],
-    30_000
+    0
   );
   if (!createControl) throw new Error("Instagram control not found: Create or New post.");
   await createControl.click();
@@ -120,27 +128,34 @@ async function openComposer(page, baseUrl = DEFAULT_BASE_URL) {
   // Some accounts open a Create flyout containing a second "Post" choice,
   // while others go straight to the file selector. Prefer the direct selector
   // when it appears and only click Post when that intermediate flyout exists.
-  let input = await waitForAttachedInput(page, videoInputSelectors, 1_500);
-  if (input) return input;
-
-  const postChoice = await firstVisible(
-    [
-      page.getByRole("menuitem", { name: /^\s*Post\s*$/i }),
-      page.locator('[role="menu"] [role="button"]').filter({ hasText: /^\s*Post\s*$/i }),
-      page.getByText(/^\s*Post\s*$/i, { exact: true })
-    ],
-    2_500
-  );
-  if (postChoice) {
-    await postChoice.click();
-    input = await waitForAttachedInput(page, videoInputSelectors, 1_500);
+  let postClicked = false;
+  let reelClicked = false;
+  while (true) {
+    const input = await waitForAttachedInput(page, videoInputSelectors, 500);
     if (input) return input;
-  }
-  await clickIfVisible(page, ["Reel"], 2_000);
 
-  input = await waitForAttachedInput(page, videoInputSelectors, 15_000);
-  if (!input) throw new Error("Instagram opened the composer but did not provide a video selector.");
-  return input;
+    if (!postClicked) {
+      const postChoice = await firstVisible(
+        [
+          page.getByRole("menuitem", { name: /^\s*Post\s*$/i }),
+          page.locator('[role="menu"] [role="button"]').filter({ hasText: /^\s*Post\s*$/i }),
+          page.getByText(/^\s*Post\s*$/i, { exact: true })
+        ],
+        500
+      );
+      if (postChoice) {
+        await postChoice.click();
+        postClicked = true;
+        continue;
+      }
+    }
+
+    if (!reelClicked && await clickIfVisible(page, ["Reel"], 500)) {
+      reelClicked = true;
+      continue;
+    }
+    await assertLoggedIn(page);
+  }
 }
 
 async function setVideoFile(input, videoPath, page) {
@@ -164,7 +179,7 @@ async function setOriginalAspectRatio(page) {
         '[aria-label*="select crop" i], [aria-label*="aspect ratio" i], button:has(svg[aria-label*="crop" i])'
       )
     ],
-    15_000
+    0
   );
   if (!cropControl) return false;
 
@@ -174,7 +189,7 @@ async function setOriginalAspectRatio(page) {
       ...namedLocators(page, ["Original"], ["button", "menuitem", "option", "radio"]),
       page.getByText(/^\s*Original\s*$/i, { exact: true })
     ],
-    8_000
+    0
   );
   if (!originalOption) return false;
 
@@ -183,7 +198,7 @@ async function setOriginalAspectRatio(page) {
 }
 
 async function setCoverFile(page, thumbnailPath) {
-  const coverControl = await firstVisible(namedLocators(page, ["Cover photo", "Edit cover", "Cover"]), 15_000);
+  const coverControl = await firstVisible(namedLocators(page, ["Cover photo", "Edit cover", "Cover"]), 0);
   if (!coverControl) return false;
   await coverControl.click();
 
@@ -222,13 +237,13 @@ async function fillCaption(page, caption) {
       page.locator('[contenteditable="true"][aria-label*="caption" i]'),
       page.getByRole("textbox", { name: /caption/i })
     ],
-    15_000
+    0
   );
   if (!editor) throw new Error("Instagram caption field was not found.");
   await editor.fill(caption);
 }
 
-async function waitForPositiveConfirmation(page, timeout = 120_000) {
+async function waitForPositiveConfirmation(page, timeout = 0) {
   const confirmation = await firstVisible(
     [
       page.getByText(/your (reel|post) has been shared/i),
@@ -275,6 +290,7 @@ async function publishReel({
   thumbnailPath,
   caption,
   screenshotRoot,
+  onSubmitted = async () => {},
   onStep = () => {},
   baseUrl = DEFAULT_BASE_URL
 }) {
@@ -302,7 +318,7 @@ async function publishReel({
 
     stage = "waiting for video processing";
     onStep("Preparing the video");
-    await clickNamed(page, ["Next"], 120_000);
+    await clickNamed(page, ["Next"], 0);
 
     // The cover picker is optional. With no chosen image Instagram keeps its automatic video-frame cover.
     if (thumbnailPath) {
@@ -316,7 +332,7 @@ async function publishReel({
 
     stage = "opening the caption step";
     onStep("Opening caption settings");
-    await clickNamed(page, ["Next"], 30_000);
+    await clickNamed(page, ["Next"], 0);
 
     stage = "adding the caption";
     onStep("Adding the caption");
@@ -324,7 +340,8 @@ async function publishReel({
 
     stage = "sharing the Reel";
     onStep("Sharing the Reel");
-    await clickNamed(page, ["Share"], 15_000);
+    await clickNamed(page, ["Share"], 0);
+    await onSubmitted();
 
     stage = "waiting for Instagram confirmation";
     onStep("Waiting for Instagram confirmation");

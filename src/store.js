@@ -3,6 +3,37 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { normalizePlatform, normalizeSettings, safeProfileName, safeWorkspaceName } = require("./shared");
 
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const RETRYABLE_FILE_ERRORS = new Set(["EACCES", "EBUSY", "EEXIST", "EPERM"]);
+
+async function replaceFileWithRetry(fileSystem, temporaryPath, filePath, attempts = 40) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await fileSystem.rename(temporaryPath, filePath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!RETRYABLE_FILE_ERRORS.has(error?.code)) throw error;
+    }
+
+    // Antivirus and search indexing can briefly lock JSON files on Windows.
+    // A copy replaces the destination without depending on rename semantics.
+    if (attempt >= 4) {
+      try {
+        await fileSystem.copyFile(temporaryPath, filePath);
+        await fileSystem.rm(temporaryPath, { force: true }).catch(() => {});
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!RETRYABLE_FILE_ERRORS.has(error?.code)) throw error;
+      }
+    }
+    await wait(Math.min(500, 25 * (attempt + 1)));
+  }
+  throw lastError;
+}
+
 class AppStore {
   constructor(rootDirectory) {
     this.rootDirectory = rootDirectory;
@@ -44,9 +75,13 @@ class AppStore {
   }
 
   async writeJson(filePath, value) {
-    const temporaryPath = `${filePath}.tmp`;
-    await fs.writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-    await fs.rename(temporaryPath, filePath);
+    const temporaryPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+      await replaceFileWithRetry(fs, temporaryPath, filePath);
+    } finally {
+      await fs.rm(temporaryPath, { force: true }).catch(() => {});
+    }
   }
 
   async queueWrite(filePath, operation) {
@@ -325,7 +360,7 @@ class AppStore {
   async hasSuccessfulPost(profileId, filePath) {
     const history = await this.getHistory();
     return history.some(
-      (entry) => entry.profileId === profileId && entry.filePath === filePath && entry.status === "posted"
+      (entry) => entry.profileId === profileId && entry.filePath === filePath && ["posted", "submitted"].includes(entry.status)
     );
   }
 
@@ -344,4 +379,4 @@ class AppStore {
   }
 }
 
-module.exports = { AppStore };
+module.exports = { AppStore, replaceFileWithRetry };

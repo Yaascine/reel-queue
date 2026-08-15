@@ -76,6 +76,60 @@ test("does not move or record a video without positive confirmation", async (t) 
   assert.equal(runner.getStatus().mode, "error");
 });
 
+test("never retries a file after the platform accepted its final submission click", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  let moveCalls = 0;
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    publisher: async ({ onSubmitted }) => {
+      await onSubmitted();
+      throw new ConfirmationError("The success screen changed after submission");
+    },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => { moveCalls += 1; return "posted"; }
+  });
+
+  await runner.start(data.settings);
+  await waitUntilStopped(runner);
+
+  assert.equal(moveCalls, 1);
+  assert.equal(data.history.length, 1);
+  assert.equal(data.history[0].status, "submitted");
+  assert.equal(runner.getStatus().mode, "complete");
+  assert.equal(data.logs.some((entry) => /will not be uploaded again/i.test(entry.message)), true);
+});
+
+test("still moves an accepted post when Windows blocks the final history update", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  const originalAddHistory = data.store.addHistory;
+  let historyWrites = 0;
+  data.store.addHistory = async (entry) => {
+    historyWrites += 1;
+    if (historyWrites === 2) throw Object.assign(new Error("history locked"), { code: "EPERM" });
+    await originalAddHistory(entry);
+  };
+  let moveCalls = 0;
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    publisher: async ({ onSubmitted }) => { await onSubmitted(); return { confirmed: true }; },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => { moveCalls += 1; return "posted"; }
+  });
+
+  await runner.start(data.settings);
+  await waitUntilStopped(runner);
+
+  assert.equal(moveCalls, 1);
+  assert.equal(data.history[0].status, "submitted");
+  assert.equal(runner.getStatus().mode, "complete");
+});
+
 test("records success before moving a video to the posted folder", async (t) => {
   const data = await fixture();
   t.after(() => fs.rm(data.root, { recursive: true, force: true }));

@@ -31,7 +31,9 @@ function next(step){ window.testEvents.push('next:'+step); if(step<3){ document.
 const tiktokPage = `<!doctype html><html><body><main id="app"><input id="file" type="file" accept="video/mp4"></main><script>
 window.testEvents=[]; const app=document.querySelector('#app');
 document.querySelector('#file').onchange=e=>{ window.testEvents.push('file:'+e.target.files[0].name); app.innerHTML=
-'<textarea aria-label="Caption"></textarea><button id="privacy">Everyone</button><div id="options" hidden><button role="menuitem" id="friends">Friends</button></div><button id="post">Post</button>';
+'<textarea aria-label="Caption"></textarea><button id="privacy">Everyone</button><div id="options" hidden><button role="menuitem" id="friends">Friends</button></div><button id="post">Post</button>'+
+'<div id="react-joyride-portal"><div role="presentation" data-test-id="overlay" class="react-joyride__overlay"></div><button id="skipTour">Skip</button></div>';
+document.querySelector('#skipTour').onclick=()=>{ window.testEvents.push('tour:skip'); document.querySelector('#react-joyride-portal').remove(); };
 document.querySelector('#privacy').onclick=()=>document.querySelector('#options').hidden=false;
 document.querySelector('#friends').onclick=()=>{ window.testEvents.push('privacy:friends'); document.querySelector('#options').remove(); };
 document.querySelector('#post').onclick=()=>{ window.testEvents.push('caption:'+document.querySelector('textarea').value); app.innerHTML='<h1>Video posted successfully</h1>'; };
@@ -52,11 +54,14 @@ async function fixture(t, html, filename) {
 test("publishes a filename-titled YouTube Short through details, audience, and visibility", { skip: !findChrome() }, async (t) => {
   const filenameTitle = "Y".repeat(100);
   const data = await fixture(t, youtubePage, `${filenameTitle}.mp4`);
+  let submitted = 0;
   const result = await publishYouTubeShort({
     page: data.page, videoPath: data.videoPath, title: filenameTitle, description: "Test description",
-    privacy: "unlisted", madeForKids: false, screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl
+    privacy: "unlisted", madeForKids: false, screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl,
+    onSubmitted: async () => { submitted += 1; }
   });
   assert.deepEqual(result, { confirmed: true });
+  assert.equal(submitted, 1);
   const events = await data.page.evaluate(() => window.testEvents);
   assert.equal(events[0], `file:${filenameTitle}.mp4`);
   assert.match(events[1], /^thumbnail:[12]$/);
@@ -65,10 +70,13 @@ test("publishes a filename-titled YouTube Short through details, audience, and v
 
 test("publishes a filename-captioned TikTok with an independent audience", { skip: !findChrome() }, async (t) => {
   const data = await fixture(t, tiktokPage, "MMA knockout.final.cut.mp4");
+  let submitted = 0;
   const result = await publishTikTok({
     page: data.page, videoPath: data.videoPath, caption: "MMA knockout.final.cut", privacy: "friends",
-    screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl
+    screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl,
+    onSubmitted: async () => { submitted += 1; }
   });
   assert.deepEqual(result, { confirmed: true });
-  assert.deepEqual(await data.page.evaluate(() => window.testEvents), ["file:MMA knockout.final.cut.mp4", "privacy:friends", "caption:MMA knockout.final.cut"]);
+  assert.equal(submitted, 1);
+  assert.deepEqual(await data.page.evaluate(() => window.testEvents), ["file:MMA knockout.final.cut.mp4", "tour:skip", "privacy:friends", "caption:MMA knockout.final.cut"]);
 });

@@ -88,7 +88,7 @@ const mockInstagram = `<!doctype html>
   </body>
 </html>`;
 
-test("allows five minutes for Instagram to accept a large video", async () => {
+test("allows unlimited time for Instagram to accept a large video", async () => {
   let received;
   const input = {
     async setInputFiles(videoPath, options) {
@@ -101,7 +101,7 @@ test("allows five minutes for Instagram to accept a large video", async () => {
     videoPath: "large-video.mkv",
     options: { timeout: VIDEO_FILE_SELECTION_TIMEOUT }
   });
-  assert.equal(VIDEO_FILE_SELECTION_TIMEOUT, 300_000);
+  assert.equal(VIDEO_FILE_SELECTION_TIMEOUT, 0);
 });
 
 test("clicks the account-specific Post flyout before looking for the file selector", { skip: !findChrome() }, async (t) => {
@@ -155,16 +155,19 @@ test("publishes through the current two-step edit and caption flow", { skip: !fi
   });
 
   const page = await browser.newPage();
+  let submitted = 0;
   const result = await publishReel({
     page,
     videoPath,
     thumbnailPath,
     caption: "Reel Queue end-to-end test",
     screenshotRoot: path.join(temporaryRoot, "diagnostics"),
-    baseUrl: `http://127.0.0.1:${address.port}`
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    onSubmitted: async () => { submitted += 1; }
   });
 
   assert.deepEqual(result, { confirmed: true });
+  assert.equal(submitted, 1);
   assert.deepEqual(await page.evaluate(() => window.testEvents), [
     "create-open",
     "video:test-reel.mp4",

@@ -1,7 +1,9 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const VIDEO_FILE_SELECTION_TIMEOUT = 300_000;
+// Zero is Playwright's "no timeout" value. Slow local conversions and uploads
+// are allowed to finish for as long as the platform/browser remains open.
+const VIDEO_FILE_SELECTION_TIMEOUT = 0;
 const PLAYWRIGHT_REMOTE_FILE_LIMIT = 50 * 1024 * 1024;
 
 function delay(milliseconds) {
@@ -9,7 +11,7 @@ function delay(milliseconds) {
 }
 
 async function waitForAccepted(isAccepted, timeout = VIDEO_FILE_SELECTION_TIMEOUT, shouldStop = () => false) {
-  const deadline = Date.now() + timeout;
+  const deadline = timeout > 0 ? Date.now() + timeout : Number.POSITIVE_INFINITY;
   while (Date.now() < deadline && !shouldStop()) {
     if (await isAccepted().catch(() => false)) return true;
     await delay(250);
@@ -69,7 +71,7 @@ async function setVideoInputFile(input, videoPath, { platform, isAccepted, page 
   const label = platform || "The platform";
   if (result.error?.name === "TimeoutError" || /timeout/i.test(result.error?.message || "")) {
     throw new Error(
-      `${label} did not finish accepting the video within 5 minutes. The source video was kept; check that the file is readable and try again.`
+      `${label} stopped accepting the video before it finished. The source video was kept; check the browser and try again.`
     );
   }
   throw result.error;

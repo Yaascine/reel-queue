@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { PLAYWRIGHT_REMOTE_FILE_LIMIT, VIDEO_FILE_SELECTION_TIMEOUT, setVideoInputFile } = require("../src/file-upload");
 
-test("gives every platform five minutes to accept a video", async () => {
+test("gives every platform unlimited time to accept a video", async () => {
   let received;
   const input = {
     async setInputFiles(videoPath, options) {
@@ -17,7 +17,7 @@ test("gives every platform five minutes to accept a video", async () => {
     videoPath: "large-video.mkv",
     options: { timeout: VIDEO_FILE_SELECTION_TIMEOUT }
   });
-  assert.equal(VIDEO_FILE_SELECTION_TIMEOUT, 300_000);
+  assert.equal(VIDEO_FILE_SELECTION_TIMEOUT, 0);
   assert.deepEqual(result, { accepted: true, recovered: false });
 });
 

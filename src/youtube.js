@@ -38,12 +38,12 @@ async function openUpload(page, baseUrl) {
 
   const create = await firstVisible(
     [...namedLocators(page, ["Create"]), page.locator('#create-icon, ytcp-button#create-icon')],
-    30_000
+    0
   );
   if (!create) throw new Error("YouTube Studio control not found: Create.");
   await create.click();
 
-  const upload = await firstVisible(namedLocators(page, ["Upload videos", "Upload video"]), 10_000);
+  const upload = await firstVisible(namedLocators(page, ["Upload videos", "Upload video"]), 0);
   if (!upload) throw new Error("YouTube Studio control not found: Upload videos.");
   const menuUpload = await firstVisible(
     [
@@ -54,7 +54,7 @@ async function openUpload(page, baseUrl) {
   );
   await (menuUpload || upload).click();
 
-  input = await waitForAttachedInput(page, ['input[type="file"][accept*="video" i]', 'input[type="file"]'], 15_000);
+  input = await waitForAttachedInput(page, ['input[type="file"][accept*="video" i]', 'input[type="file"]'], 0);
   if (!input) throw new Error("YouTube Studio opened the upload dialog but did not provide a video selector.");
   return input;
 }
@@ -63,7 +63,7 @@ async function chooseAudience(page, madeForKids) {
   const label = madeForKids ? /yes,? it(?:(?:'|’)s| is) made for kids/i : /no,? it(?:(?:'|’)s| is) not made for kids/i;
   const option = await firstVisible(
     [page.getByText(label), page.getByRole("radio", { name: label }), page.getByLabel(label)],
-    20_000
+    0
   );
   if (!option) throw new Error("YouTube Studio audience setting was not found.");
   await option.click();
@@ -74,7 +74,7 @@ async function chooseVisibility(page, privacy) {
   const label = labels[privacy] || labels.public;
   const option = await firstVisible(
     [page.getByRole("radio", { name: label }), page.getByText(label, { exact: true }), page.getByLabel(label)],
-    20_000
+    0
   );
   if (!option) throw new Error(`YouTube Studio visibility setting was not found: ${privacy}.`);
   await option.click();
@@ -88,6 +88,7 @@ async function publishYouTubeShort({
   privacy = "public",
   madeForKids = false,
   screenshotRoot,
+  onSubmitted = async () => {},
   onStep = () => {},
   baseUrl = DEFAULT_BASE_URL
 }) {
@@ -116,19 +117,19 @@ async function publishYouTubeShort({
         page.locator('[aria-label*="title" i][contenteditable="true"]'),
         page.getByRole("textbox", { name: /title/i })
       ],
-      45_000
+      0
     );
     if (!titleEditor) throw new Error("YouTube Studio title field was not found.");
     await fillEditor(titleEditor, title);
 
-    const descriptionEditor = await firstVisible(
+    const descriptionEditor = description ? await firstVisible(
       [
         page.locator('#description-textarea #textbox'),
         page.locator('[aria-label*="description" i][contenteditable="true"]'),
         page.getByRole("textbox", { name: /description/i })
       ],
-      10_000
-    );
+      0
+    ) : null;
     if (descriptionEditor) await fillEditor(descriptionEditor, description);
     await chooseAudience(page, madeForKids);
 
@@ -138,7 +139,7 @@ async function publishYouTubeShort({
 
     for (let index = 0; index < 3; index += 1) {
       stage = `opening YouTube upload step ${index + 2}`;
-      const next = await firstVisible(namedLocators(page, ["Next"]), 120_000);
+      const next = await firstVisible(namedLocators(page, ["Next"]), 0);
       if (!next) throw new Error("YouTube Studio control not found: Next.");
       await next.click();
     }
@@ -149,9 +150,10 @@ async function publishYouTubeShort({
 
     stage = "publishing the YouTube Short";
     onStep("Publishing the YouTube Short");
-    const done = await firstVisible(namedLocators(page, ["Done", "Save", "Publish"]), 120_000);
+    const done = await firstVisible(namedLocators(page, ["Done", "Save", "Publish"]), 0);
     if (!done) throw new Error("YouTube Studio publish control was not found.");
     await done.click();
+    await onSubmitted();
 
     stage = "waiting for YouTube confirmation";
     onStep("Waiting for YouTube confirmation");
@@ -161,7 +163,7 @@ async function publishYouTubeShort({
         page.getByText(/upload complete/i),
         page.getByRole("heading", { name: /video (published|uploaded)/i })
       ],
-      180_000
+      0
     );
     if (!confirmation) {
       throw new ConfirmationError("YouTube did not show a clear upload confirmation. The source video was kept to prevent data loss.");

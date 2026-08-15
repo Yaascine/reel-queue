@@ -162,6 +162,8 @@ class AutomationRunner {
         await this.log("info", `Converted ${path.basename(videoPath)} to a high-quality MP4.`, { filePath: videoPath });
       }
 
+      let submissionRecorded = false;
+      let publicationError = null;
       try {
         const automaticTitle = videoTitleFromPath(videoPath, this.platform === "youtube" ? 100 : null);
         let thumbnailPath = settings.thumbnailMode === "single" ? settings.thumbnailPath : "";
@@ -178,31 +180,66 @@ class AutomationRunner {
           : settings.description;
         this.update({ message: "Opening Chrome" });
         const handle = await this.chrome.open(settings.profileId);
-        await this.publisher({
-          page: handle.page,
-          videoPath: prepared.path,
-          thumbnailPath,
-          caption,
-          title: this.platform === "youtube" ? automaticTitle : settings.title,
-          description,
-          privacy: settings.privacy,
-          madeForKids: settings.madeForKids,
-          screenshotRoot: this.store.screenshotRoot,
-          onStep: (message) => this.update({ message })
-        });
+        try {
+          await this.publisher({
+            page: handle.page,
+            videoPath: prepared.path,
+            thumbnailPath,
+            caption,
+            title: this.platform === "youtube" ? automaticTitle : settings.title,
+            description,
+            privacy: settings.privacy,
+            madeForKids: settings.madeForKids,
+            screenshotRoot: this.store.screenshotRoot,
+            onStep: (message) => this.update({ message }),
+            onSubmitted: async () => {
+              if (submissionRecorded) return;
+              // Set this before disk I/O: if Windows blocks the history write
+              // after the final platform click, the source still must not retry.
+              submissionRecorded = true;
+              await this.store.addHistory({
+                status: "submitted",
+                workspaceId: this.workspaceId,
+                platform: this.platform,
+                profileId: settings.profileId,
+                filePath: videoPath,
+                fileName: path.basename(videoPath)
+              });
+            }
+          });
+        } catch (error) {
+          if (!submissionRecorded) throw error;
+          publicationError = error;
+        }
       } finally {
         if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
       }
 
-      await this.store.addHistory({
-        status: "posted",
-        workspaceId: this.workspaceId,
-        platform: this.platform,
-        profileId: settings.profileId,
-        filePath: videoPath,
-        fileName: path.basename(videoPath)
-      });
-      await this.log("success", `Posted ${path.basename(videoPath)}.`, { filePath: videoPath });
+      if (publicationError) {
+        await this.log(
+          "warning",
+          `The platform accepted ${path.basename(videoPath)}, but its final confirmation could not be read. It will not be uploaded again.`,
+          { filePath: videoPath, stage: publicationError.stage || "", details: publicationError.message }
+        ).catch(() => {});
+      } else {
+        try {
+          await this.store.addHistory({
+            status: "posted",
+            workspaceId: this.workspaceId,
+            platform: this.platform,
+            profileId: settings.profileId,
+            filePath: videoPath,
+            fileName: path.basename(videoPath)
+          });
+        } catch (error) {
+          if (!submissionRecorded) throw error;
+          await this.log("warning", `Posted ${path.basename(videoPath)}, but Windows temporarily blocked the final history update.`, {
+            filePath: videoPath,
+            details: error.message
+          }).catch(() => {});
+        }
+        await this.log("success", `Posted ${path.basename(videoPath)}.`, { filePath: videoPath }).catch(() => {});
+      }
 
       try {
         const destination = await this.postedMover(videoPath);
