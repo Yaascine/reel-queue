@@ -197,8 +197,17 @@
           </div>
 
           <div class="queue-metric">
-            <span>Remaining</span>
+            <span>Queue videos remaining</span>
             <strong id="queueCount">0</strong>
+          </div>
+
+          <div class="daily-upload-meter" aria-labelledby="dailyUploadLabel">
+            <div class="daily-upload-heading">
+              <span id="dailyUploadLabel">Account upload allowance</span>
+              <strong id="dailyUploadCount">0 / 22</strong>
+            </div>
+            <progress id="dailyUploadProgress" max="22" value="0">0 of 22</progress>
+            <small id="dailyUploadRemaining">22 uploads remain before cooldown</small>
           </div>
 
           <div class="current-file" id="currentFileBlock" hidden>

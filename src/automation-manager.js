@@ -38,6 +38,9 @@ class AutomationManager {
     const items = workspaces || (await this.store.listWorkspaces());
     const entries = await Promise.all(items.map(async (workspace) => {
       const runner = await this.ensureRunner(workspace.id);
+      if (workspace.settings.profileId) {
+        await runner.refreshUploadAllowance(workspace.settings.profileId, false);
+      }
       return [workspace.id, runner.getStatus()];
     }));
     return Object.fromEntries(entries);

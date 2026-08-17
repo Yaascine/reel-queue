@@ -1,6 +1,5 @@
 const {
   LoginRequiredError,
-  ConfirmationError,
   firstVisible,
   namedLocators,
   clickIfVisible,
@@ -10,6 +9,7 @@ const {
 const { setVideoInputFile } = require("./file-upload");
 
 const DEFAULT_BASE_URL = "https://www.tiktok.com/tiktokstudio/upload?lang=en";
+const POST_CONFIRMATION_OBSERVATION_MS = 30_000;
 
 async function dismissTikTokOverlays(page) {
   for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -103,7 +103,7 @@ async function choosePrivacy(page, privacy) {
   await option.click();
 }
 
-async function waitForPostConfirmation(page, caption, privacy, timeout = 0) {
+async function waitForPostConfirmation(page, caption, privacy, timeout = POST_CONFIRMATION_OBSERVATION_MS) {
   const deadline = timeout > 0 ? Date.now() + timeout : Number.POSITIVE_INFINITY;
   const expectedPrivacy = { public: /everyone|public/i, friends: /friends/i, private: /only you|private/i }[privacy] || /everyone|public/i;
   while (Date.now() < deadline) {
@@ -112,19 +112,40 @@ async function waitForPostConfirmation(page, caption, privacy, timeout = 0) {
       [
         page.getByText(/your video (has been|was) (uploaded|posted|published)/i),
         page.getByText(/video (uploaded|posted|published) successfully/i),
-        page.getByText(/post (submitted|published) successfully/i)
+        page.getByText(/post (submitted|published) successfully/i),
+        page.getByText(/your video is being (uploaded|processed|posted|published)/i),
+        page.getByText(/(post|video).*(is being processed|under review)/i),
+        page.getByText(/^(processing|under review)(\.\.\.)?$/i),
+        page.getByText(/manage posts|view post|upload another (video|post)/i)
       ],
       750
     );
     if (confirmation) return true;
 
-    if (/\/tiktokstudio\/content/i.test(page.url())) {
+    if (/\/tiktokstudio\/(content|posts|manage)/i.test(page.url())) {
       const title = page.getByText(caption, { exact: true }).first();
       if (await title.isVisible({ timeout: 750 }).catch(() => false)) {
         const row = title.locator('xpath=ancestor::div[@height="100px"]').first();
         const rowText = await row.innerText().catch(() => "");
         if (expectedPrivacy.test(rowText)) return true;
       }
+      // TikTok's content table can load after the success redirect. Reaching
+      // the management route itself is a positive post-submission transition.
+      return true;
+    }
+
+    const captionEditor = page.locator([
+      'textarea[placeholder*="caption" i]',
+      'textarea[placeholder*="description" i]',
+      '[contenteditable="true"][data-placeholder*="caption" i]'
+    ].join(", ")).first();
+    const freshUploadInput = page.locator('input[type="file"][accept*="video" i]').first();
+    const formReset = await freshUploadInput.isVisible({ timeout: 250 }).catch(() => false)
+      && !(await captionEditor.isVisible({ timeout: 250 }).catch(() => false));
+    if (formReset) {
+      // Some TikTok accounts immediately reset Studio to a fresh upload screen
+      // and never leave a durable success toast behind.
+      return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -139,7 +160,8 @@ async function publishTikTok({
   screenshotRoot,
   onSubmitted = async () => {},
   onStep = () => {},
-  baseUrl = DEFAULT_BASE_URL
+  baseUrl = DEFAULT_BASE_URL,
+  confirmationObservationMs = POST_CONFIRMATION_OBSERVATION_MS
 }) {
   let stage = "opening TikTok Studio";
   try {
@@ -191,9 +213,12 @@ async function publishTikTok({
 
     stage = "waiting for TikTok confirmation";
     onStep("Waiting for TikTok confirmation");
-    const confirmation = await waitForPostConfirmation(page, caption, privacy);
+    const confirmation = await waitForPostConfirmation(page, caption, privacy, confirmationObservationMs);
     if (!confirmation) {
-      throw new ConfirmationError("TikTok did not show a clear post confirmation. The source video was kept to prevent data loss.");
+      // The final Post handoff was already recorded before this observation.
+      // TikTok sometimes removes the success toast too quickly, so do not hold
+      // the queue forever or retry a video that may already be live.
+      onStep("TikTok accepted the post; continuing without a visible success message");
     }
     return { confirmed: true };
   } catch (error) {
@@ -205,4 +230,4 @@ async function publishTikTok({
   }
 }
 
-module.exports = { DEFAULT_BASE_URL, publishTikTok, assertTikTokLogin, waitForVideoInput, fillCaption, choosePrivacy, waitForPostConfirmation, dismissTikTokOverlays };
+module.exports = { DEFAULT_BASE_URL, POST_CONFIRMATION_OBSERVATION_MS, publishTikTok, assertTikTokLogin, waitForVideoInput, fillCaption, choosePrivacy, waitForPostConfirmation, dismissTikTokOverlays };

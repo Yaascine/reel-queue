@@ -1,6 +1,6 @@
 {
   "name": "reel-queue",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "A local desktop queue for posting Instagram Reels, YouTube Shorts, and TikTok videos through visible Chrome sessions.",
   "main": "src/main.js",
   "author": "Yaascine",
@@ -12,7 +12,7 @@
   },
   "scripts": {
     "start": "electron .",
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
     "prepare:ffmpeg": "node scripts/prepare-ffmpeg.js",
     "pack": "npm run prepare:ffmpeg && electron-builder --dir",
     "pack:win": "node scripts/prepare-ffmpeg.js win32 x64 && electron-builder --win --x64 --dir",

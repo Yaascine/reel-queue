@@ -22,7 +22,12 @@ async function fixture() {
     saveSettings: async (settings) => settings,
     hasSuccessfulPost: async (profileId, filePath) =>
       history.some((entry) => entry.profileId === profileId && entry.filePath === filePath),
-    getUploadAllowance: async () => ({ allowed: true, count: 0, limit: 22, nextAllowedAt: null }),
+    getUploadAllowance: async (profileId) => {
+      const count = new Set(history
+        .filter((entry) => entry.profileId === profileId && ["posted", "submitted"].includes(entry.status))
+        .map((entry) => entry.filePath)).size;
+      return { allowed: count < 22, count, limit: 22, nextAllowedAt: null };
+    },
     addHistory: async (entry) => history.push(entry),
     appendLog: async (level, message, details) => {
       const entry = { at: new Date().toISOString(), level, message, ...details };
@@ -160,6 +165,7 @@ test("records success before moving a video to the posted folder", async (t) => 
     ["posted-folder", data.videoPath]
   ]);
   assert.equal(data.history.length, 1);
+  assert.equal(runner.getStatus().dailyUploadCount, 1);
   assert.equal(runner.getStatus().mode, "complete");
 });
 

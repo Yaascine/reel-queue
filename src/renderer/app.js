@@ -11,7 +11,8 @@ const elements = Object.fromEntries(
     "youtubeTitleField", "youtubeTitleInput", "youtubeTitleCount", "youtubeDescriptionField", "youtubeDescriptionInput",
     "youtubeDescriptionCount", "saveDescriptionButton", "descriptionPool", "privacyField",
     "privacySelect", "privacyHelp", "madeForKidsField", "madeForKidsInput", "postedHelp", "safetyCopy",
-    "runMessage", "queueCount", "currentFileBlock", "currentFile", "startButton", "stopButton",
+    "runMessage", "queueCount", "dailyUploadCount", "dailyUploadProgress", "dailyUploadRemaining",
+    "currentFileBlock", "currentFile", "startButton", "stopButton",
     "activityList", "openDiagnosticsButton", "clearLogButton", "profileDialog", "profileDialogCopy",
     "profileNameInput", "profileError", "createProfileButton", "workspaceDialog", "workspaceDialogCopy",
     "workspaceNameInput", "workspaceError", "createWorkspaceButton"
@@ -94,6 +95,29 @@ function showNotice(message, type = "error") {
 
 function hideNotice() { elements.notice.hidden = true; elements.notice.textContent = ""; }
 function errorMessage(error) { return error?.message || String(error || "Something went wrong."); }
+function formatCounterDuration(milliseconds) {
+  const totalMinutes = Math.max(0, Math.ceil(milliseconds / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+function renderDailyUploadAllowance(status, now = Date.now()) {
+  const dailyLimit = Math.max(1, Number(status.dailyUploadLimit) || 22);
+  const resetAt = Number(status.dailyUploadResetAt) || 0;
+  const resetComplete = resetAt > 0 && resetAt <= now;
+  const dailyCount = resetComplete ? 0 : Math.max(0, Number(status.dailyUploadCount) || 0);
+  const dailyRemaining = Math.max(0, dailyLimit - dailyCount);
+  elements.dailyUploadCount.textContent = `${dailyCount} / ${dailyLimit}`;
+  elements.dailyUploadProgress.max = dailyLimit;
+  elements.dailyUploadProgress.value = Math.min(dailyLimit, dailyCount);
+  elements.dailyUploadProgress.textContent = `${dailyCount} of ${dailyLimit}`;
+  if (resetAt > now && dailyRemaining === 0) {
+    elements.dailyUploadRemaining.textContent = `Cooldown active — ${formatCounterDuration(resetAt - now)} remaining`;
+  } else {
+    elements.dailyUploadRemaining.textContent = `${dailyRemaining} upload${dailyRemaining === 1 ? "" : "s"} available before cooldown`;
+  }
+}
 
 function renderTextPool(container, items, settingName) {
   container.replaceChildren();
@@ -284,6 +308,7 @@ function renderStatus(status) {
   elements.statusTitle.textContent = `${platformName()} · ${workspace.name}: ${status.message || "Ready"}`;
   elements.runMessage.textContent = status.message || "Ready";
   elements.queueCount.textContent = String(status.queueCount || 0);
+  renderDailyUploadAllowance(status);
   elements.statusDot.className = `status-dot ${statusClass(status)}`;
   elements.startButton.disabled = running;
   elements.stopButton.disabled = !running || status.stopRequested;
@@ -307,6 +332,7 @@ function renderStatus(status) {
 
   window.clearInterval(countdownTimer);
   const updateCountdown = () => {
+    renderDailyUploadAllowance(status);
     if (!status.nextRunAt) { elements.countdown.textContent = ""; return; }
     const remaining = Math.max(0, status.nextRunAt - Date.now());
     const minutes = Math.floor(remaining / 60_000);
@@ -314,7 +340,9 @@ function renderStatus(status) {
     elements.countdown.textContent = `Next post in ${minutes}:${String(seconds).padStart(2, "0")}`;
   };
   updateCountdown();
-  if (status.nextRunAt) countdownTimer = window.setInterval(updateCountdown, 1000);
+  if (status.nextRunAt || Number(status.dailyUploadResetAt) > Date.now()) {
+    countdownTimer = window.setInterval(updateCountdown, 1000);
+  }
   renderTabs();
 }
 

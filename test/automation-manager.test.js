@@ -13,6 +13,7 @@ function managerFixture() {
   const store = {
     listWorkspaces: async () => workspaces,
     getWorkspace: async (id) => workspaces.find((workspace) => workspace.id === id) || null,
+    getUploadAllowance: async () => ({ allowed: true, count: 0, limit: 22, nextAllowedAt: null }),
     saveWorkspaceSettings: async (_id, settings) => settings,
     removeWorkspace: async () => true
   };
@@ -25,6 +26,7 @@ function managerFixture() {
         workspaceId,
         profileId: "",
         running: false,
+        dailyUploadCount: 0,
         start: async (settings) => {
           runner.profileId = settings.profileId;
           runner.running = true;
@@ -34,7 +36,12 @@ function managerFixture() {
           runner.running = false;
           return runner.getStatus();
         },
-        getStatus: () => ({ workspaceId, running: runner.running, mode: runner.running ? "running" : "idle" })
+        refreshUploadAllowance: async (profileId) => {
+          const allowance = await store.getUploadAllowance(profileId);
+          runner.dailyUploadCount = allowance.count;
+          return allowance;
+        },
+        getStatus: () => ({ workspaceId, running: runner.running, mode: runner.running ? "running" : "idle", dailyUploadCount: runner.dailyUploadCount, dailyUploadLimit: 22 })
       };
       runners.set(workspaceId, runner);
       return runner;
@@ -49,6 +56,16 @@ test("runs different Instagram profiles concurrently", async () => {
   await manager.start("football", { profileId: "account-football" });
   assert.equal(runners.get("mma").running, true);
   assert.equal(runners.get("football").running, true);
+});
+
+test("loads the saved account upload counter into queue status", async () => {
+  const { manager } = managerFixture();
+  manager.store.getUploadAllowance = async () => ({ allowed: true, count: 7, limit: 22, nextAllowedAt: null });
+  const workspace = await manager.store.getWorkspace("mma");
+  workspace.settings.profileId = "instagram-account";
+  const statuses = await manager.getStatuses([workspace]);
+  assert.equal(statuses.mma.dailyUploadCount, 7);
+  assert.equal(statuses.mma.dailyUploadLimit, 22);
 });
 
 test("prevents two queues from controlling the same Instagram profile", async () => {

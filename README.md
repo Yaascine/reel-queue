@@ -24,6 +24,8 @@ Instagram queues explicitly select Instagram's **Original** crop. A queue can le
 
 Reel Queue allows up to 22 accepted uploads per account profile, then starts a full 24-hour cooldown from that account's newest (22nd) accepted upload. When the cooldown ends, that account receives a fresh allowance of 22 and its queue resumes automatically; other account profiles continue independently. This limit tracks uploads made by Reel Queue, not posts made manually outside the app.
 
+Queue control shows the current account's accepted-upload count, remaining allowance, and cooldown state. TikTok confirmation uses success messages, Studio navigation, and upload-form reset signals; if TikTok removes every visible success signal after accepting the final Post action, Reel Queue continues instead of waiting forever or retrying the same video.
+
 ## Files and safety
 
 - Videos are processed in natural filename order.

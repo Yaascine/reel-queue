@@ -301,6 +301,24 @@ textarea { resize: vertical; min-height: 118px; line-height: 1.5; }
 .queue-metric { margin: 26px 0 18px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; align-items: end; justify-content: space-between; }
 .queue-metric span, .current-file span { color: var(--text-soft); font-size: 11px; }
 .queue-metric strong { font-size: 38px; line-height: 1; letter-spacing: -0.04em; }
+.daily-upload-meter { margin: -7px 0 20px; }
+.daily-upload-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.daily-upload-heading span, .daily-upload-meter small { color: var(--text-soft); font-size: 11px; }
+.daily-upload-heading strong { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.daily-upload-meter progress {
+  width: 100%;
+  height: 6px;
+  margin: 9px 0 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--accent);
+  appearance: none;
+}
+.daily-upload-meter progress::-webkit-progress-bar { border-radius: 999px; background: var(--line); }
+.daily-upload-meter progress::-webkit-progress-value { border-radius: 999px; background: var(--accent); }
+.daily-upload-meter progress::-moz-progress-bar { border-radius: 999px; background: var(--accent); }
 .current-file { margin-bottom: 18px; }
 .current-file strong { display: block; overflow: hidden; text-overflow: ellipsis; margin-top: 5px; font-size: 12px; white-space: nowrap; }
 .run-actions { display: grid; grid-template-columns: 1fr; gap: 9px; }

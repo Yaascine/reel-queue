@@ -40,6 +40,13 @@ document.querySelector('#post').onclick=()=>{ window.testEvents.push('caption:'+
 };
 </script></html>`;
 
+const tiktokResetPage = `<!doctype html><html><body><main id="app"><input id="file" type="file" accept="video/mp4"></main><script>
+window.testEvents=[]; const app=document.querySelector('#app');
+document.querySelector('#file').onchange=e=>{ app.innerHTML='<textarea aria-label="Caption"></textarea><button id="privacy">Everyone</button><button id="post">Post</button>';
+document.querySelector('#post').onclick=()=>{ window.testEvents.push('posted'); app.innerHTML='<input id="fresh" type="file" accept="video/mp4"><p>Upload another video</p>'; };
+};
+</script></html>`;
+
 async function fixture(t, html, filename) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-platform-e2e-"));
   const videoPath = path.join(root, filename);
@@ -79,4 +86,40 @@ test("publishes a filename-captioned TikTok with an independent audience", { ski
   assert.deepEqual(result, { confirmed: true });
   assert.equal(submitted, 1);
   assert.deepEqual(await data.page.evaluate(() => window.testEvents), ["file:MMA knockout.final.cut.mp4", "tour:skip", "privacy:friends", "caption:MMA knockout.final.cut"]);
+});
+
+test("accepts TikTok's reset upload screen when its success toast disappears", { skip: !findChrome() }, async (t) => {
+  const data = await fixture(t, tiktokResetPage, "quick-success.mp4");
+  let submitted = 0;
+  const result = await publishTikTok({
+    page: data.page, videoPath: data.videoPath, caption: "quick-success", privacy: "public",
+    screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl,
+    confirmationObservationMs: 1_000,
+    onSubmitted: async () => { submitted += 1; }
+  });
+  assert.deepEqual(result, { confirmed: true });
+  assert.equal(submitted, 1);
+  assert.deepEqual(await data.page.evaluate(() => window.testEvents), ["posted"]);
+});
+
+test("does not wait forever when TikTok omits every confirmation signal", { skip: !findChrome() }, async (t) => {
+  const noSignalPage = tiktokResetPage.replace("app.innerHTML='<input id=\"fresh\" type=\"file\" accept=\"video/mp4\"><p>Upload another video</p>';", "app.innerHTML='<main></main>'; ");
+  const data = await fixture(t, noSignalPage, "silent-success.mp4");
+  const steps = [];
+  let observationStartedAt = 0;
+  let observationFinishedAt = 0;
+  const result = await publishTikTok({
+    page: data.page, videoPath: data.videoPath, caption: "silent-success", privacy: "public",
+    screenshotRoot: path.join(data.root, "diagnostics"), baseUrl: data.baseUrl,
+    confirmationObservationMs: 100,
+    onStep: (message) => {
+      steps.push(message);
+      if (/waiting for tiktok confirmation/i.test(message)) observationStartedAt = Date.now();
+      if (/continuing without a visible success message/i.test(message)) observationFinishedAt = Date.now();
+    }
+  });
+  assert.deepEqual(result, { confirmed: true });
+  assert.equal(observationStartedAt > 0, true);
+  assert.equal(observationFinishedAt - observationStartedAt < 2_000, true);
+  assert.equal(steps.some((message) => /continuing without a visible success message/i.test(message)), true);
 });
