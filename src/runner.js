@@ -5,6 +5,7 @@ const { publishReel } = require("./instagram");
 const { moveToPosted, prepareVideo } = require("./media");
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const PREPARATION_CONCURRENCY = 2;
 
 function randomChoice(values, random = Math.random) {
   if (!values.length) return "";
@@ -49,7 +50,9 @@ class AutomationRunner {
       queueCount: 0,
       nextRunAt: null,
       dailyUploadCount: 0,
-      dailyUploadLimit: DAILY_UPLOAD_LIMIT
+      dailyUploadLimit: DAILY_UPLOAD_LIMIT,
+      preparationReady: 0,
+      preparationTotal: 0
     };
   }
 
@@ -186,36 +189,118 @@ class AutomationRunner {
     return false;
   }
 
+  createPreparationPipeline(videoPaths) {
+    const paths = [...videoPaths];
+    const pathSet = new Set(paths);
+    const results = new Map();
+    const waiters = new Map();
+    let nextIndex = 0;
+    let ready = 0;
+    let stopped = false;
+
+    const settle = (videoPath, result) => {
+      results.set(videoPath, result);
+      ready += 1;
+      this.update({ preparationReady: ready, preparationTotal: paths.length });
+      const waiter = waiters.get(videoPath);
+      if (waiter) {
+        waiters.delete(videoPath);
+        waiter(result);
+      }
+    };
+
+    const worker = async () => {
+      while (!stopped && !this.stopRequested) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= paths.length) return;
+        const videoPath = paths[index];
+        try {
+          const prepared = await this.mediaPreparer(videoPath, this.store.conversionRoot, {
+            onProgress: (message) => {
+              if (this.state.currentFile === videoPath) this.update({ message });
+            }
+          });
+          settle(videoPath, { prepared });
+        } catch (error) {
+          settle(videoPath, { error });
+        }
+      }
+    };
+
+    this.update({ preparationReady: 0, preparationTotal: paths.length });
+    const workers = Array.from(
+      { length: Math.min(PREPARATION_CONCURRENCY, paths.length) },
+      () => worker()
+    );
+    Promise.all(workers).catch(() => {});
+
+    return {
+      has: (videoPath) => pathSet.has(videoPath),
+      take: async (videoPath) => {
+        let result = results.get(videoPath);
+        if (!result) {
+          result = await new Promise((resolve) => waiters.set(videoPath, resolve));
+        }
+        if (result.error) throw result.error;
+        return result.prepared;
+      },
+      stop: () => { stopped = true; }
+    };
+  }
+
   async runLoop(settings) {
-    while (!this.stopRequested) {
-      const pending = await this.listPending(settings);
-      this.update({ queueCount: pending.length });
-      if (!pending.length) {
-        await this.log("success", "Queue complete. No unposted videos remain.");
-        this.running = false;
-        this.update({ mode: "complete", message: "Queue complete", currentFile: "", nextRunAt: null });
-        return;
-      }
-      if (!(await this.waitForUploadCapacity(settings))) break;
+    let preparationPipeline = null;
+    try {
+      while (!this.stopRequested) {
+        const pending = await this.listPending(settings);
+        this.update({ queueCount: pending.length });
+        if (!pending.length) {
+          await this.log("success", "Queue complete. No unposted videos remain.");
+          this.running = false;
+          this.update({ mode: "complete", message: "Queue complete", currentFile: "", nextRunAt: null });
+          return;
+        }
+        if (!(await this.waitForUploadCapacity(settings))) break;
 
-      const videoPath = pending[0];
-      this.update({ currentFile: videoPath, message: "Checking video format", nextRunAt: null });
-      const prepared = await this.mediaPreparer(videoPath, this.store.conversionRoot, {
-        onProgress: (message) => this.update({ message })
-      });
-      if (this.platform === "youtube" && (prepared.media.width > prepared.media.height || prepared.media.durationSeconds > 180)) {
-        if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
-        throw new Error("YouTube Shorts must be square or vertical and no longer than 3 minutes. The source video was kept.");
-      }
-      if (prepared.mode === "remuxed") {
-        await this.log("info", `Prepared ${path.basename(videoPath)} without re-encoding.`, { filePath: videoPath });
-      } else if (prepared.mode === "transcoded") {
-        await this.log("info", `Converted ${path.basename(videoPath)} to a high-quality MP4.`, { filePath: videoPath });
-      }
+        const allowance = await this.refreshUploadAllowance(settings.profileId);
+        const dailyCapacity = Math.max(1, allowance.limit - allowance.count);
+        if (!preparationPipeline || !preparationPipeline.has(pending[0])) {
+          preparationPipeline?.stop();
+          const dailyBatch = pending.slice(0, dailyCapacity);
+          preparationPipeline = this.createPreparationPipeline(dailyBatch);
+          await this.log(
+            "info",
+            `Preparing up to ${dailyBatch.length} video(s) ahead with ${Math.min(PREPARATION_CONCURRENCY, dailyBatch.length)} converter worker(s).`
+          );
+        }
 
-      let submissionRecorded = false;
-      let publicationError = null;
-      try {
+        const videoPath = pending[0];
+        this.update({
+          currentFile: videoPath,
+          message: "Preparing video while the daily batch converts in the background",
+          nextRunAt: null
+        });
+        let prepared;
+        try {
+          prepared = await preparationPipeline.take(videoPath);
+        } catch (error) {
+          if (this.stopRequested) break;
+          throw error;
+        }
+        if (this.stopRequested) break;
+        if (this.platform === "youtube" && (prepared.media.width > prepared.media.height || prepared.media.durationSeconds > 180)) {
+          if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
+          throw new Error("YouTube Shorts must be square or vertical and no longer than 3 minutes. The source video was kept.");
+        }
+        if (prepared.mode === "remuxed") {
+          await this.log("info", `${prepared.cacheHit ? "Reused" : "Prepared"} ${path.basename(videoPath)} without re-encoding.`, { filePath: videoPath });
+        } else if (prepared.mode === "transcoded") {
+          await this.log("info", `${prepared.cacheHit ? "Reused the prepared MP4 for" : "Converted"} ${path.basename(videoPath)}.`, { filePath: videoPath });
+        }
+
+        let submissionRecorded = false;
+        let publicationError = null;
         const automaticTitle = videoTitleFromPath(videoPath, this.platform === "youtube" ? 100 : null);
         let thumbnailPath = settings.thumbnailMode === "single" ? settings.thumbnailPath : "";
         if (this.platform === "instagram" && settings.thumbnailMode === "folder") {
@@ -263,83 +348,84 @@ class AutomationRunner {
           if (!submissionRecorded) throw error;
           publicationError = error;
         }
-      } finally {
-        if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
-      }
 
-      if (publicationError) {
-        await this.log(
-          "warning",
-          `The platform accepted ${path.basename(videoPath)}, but its final confirmation could not be read. It will not be uploaded again.`,
-          { filePath: videoPath, stage: publicationError.stage || "", details: publicationError.message }
-        ).catch(() => {});
-      } else {
+        if (publicationError) {
+          await this.log(
+            "warning",
+            `The platform accepted ${path.basename(videoPath)}, but its final confirmation could not be read. It will not be uploaded again.`,
+            { filePath: videoPath, stage: publicationError.stage || "", details: publicationError.message }
+          ).catch(() => {});
+        } else {
+          try {
+            await this.store.addHistory({
+              status: "posted",
+              workspaceId: this.workspaceId,
+              platform: this.platform,
+              profileId: settings.profileId,
+              filePath: videoPath,
+              fileName: path.basename(videoPath)
+            });
+          } catch (error) {
+            if (!submissionRecorded) throw error;
+            await this.log("warning", `Posted ${path.basename(videoPath)}, but Windows temporarily blocked the final history update.`, {
+              filePath: videoPath,
+              details: error.message
+            }).catch(() => {});
+          }
+          await this.log("success", `Posted ${path.basename(videoPath)}.`, { filePath: videoPath }).catch(() => {});
+        }
+
+        await this.refreshUploadAllowance(settings.profileId).catch(async (error) => {
+          await this.log("warning", `Posted successfully, but could not refresh the account upload counter: ${error.message}`).catch(() => {});
+        });
+
         try {
-          await this.store.addHistory({
-            status: "posted",
-            workspaceId: this.workspaceId,
-            platform: this.platform,
-            profileId: settings.profileId,
+          const destination = await this.postedMover(videoPath);
+          await this.log("info", `Moved ${path.basename(videoPath)} to the posted folder.`, {
             filePath: videoPath,
-            fileName: path.basename(videoPath)
+            destination
           });
         } catch (error) {
-          if (!submissionRecorded) throw error;
-          await this.log("warning", `Posted ${path.basename(videoPath)}, but Windows temporarily blocked the final history update.`, {
-            filePath: videoPath,
-            details: error.message
-          }).catch(() => {});
+          await this.log("warning", `Posted successfully, but could not move the file to the posted folder: ${error.message}`, {
+            filePath: videoPath
+          });
         }
-        await this.log("success", `Posted ${path.basename(videoPath)}.`, { filePath: videoPath }).catch(() => {});
-      }
+        if (prepared.temporary) await fs.rm(prepared.path, { force: true }).catch(() => {});
 
-      await this.refreshUploadAllowance(settings.profileId).catch(async (error) => {
-        await this.log("warning", `Posted successfully, but could not refresh the account upload counter: ${error.message}`).catch(() => {});
-      });
+        if (this.stopRequested) break;
 
-      try {
-        const destination = await this.postedMover(videoPath);
-        await this.log("info", `Moved ${path.basename(videoPath)} to the posted folder.`, {
-          filePath: videoPath,
-          destination
+        const remaining = await this.listPending(settings);
+        this.update({ queueCount: remaining.length });
+        if (!remaining.length) {
+          await this.log("success", "Queue complete. No unposted videos remain.");
+          this.running = false;
+          this.update({ mode: "complete", message: "Queue complete", currentFile: "", nextRunAt: null });
+          return;
+        }
+
+        const intervalSeconds = chooseIntervalSeconds(settings, this.random);
+        if (settings.randomIntervalEnabled) {
+          await this.log("info", `Random gap selected: ${formatInterval(intervalSeconds)}.`);
+        }
+        if (intervalSeconds === 0) {
+          await this.log("info", "No gap selected. Starting the next post immediately.");
+          this.update({ currentFile: "", message: "Starting next post immediately", nextRunAt: null });
+          continue;
+        }
+        const waitMilliseconds = intervalSeconds * 1000;
+        const nextRunAt = this.now() + waitMilliseconds;
+        this.update({
+          currentFile: "",
+          message: `Waiting ${formatInterval(intervalSeconds)}`,
+          nextRunAt
         });
-      } catch (error) {
-        await this.log("warning", `Posted successfully, but could not move the file to the posted folder: ${error.message}`, {
-          filePath: videoPath
-        });
-      }
 
-      if (this.stopRequested) break;
-
-      const remaining = await this.listPending(settings);
-      this.update({ queueCount: remaining.length });
-      if (!remaining.length) {
-        await this.log("success", "Queue complete. No unposted videos remain.");
-        this.running = false;
-        this.update({ mode: "complete", message: "Queue complete", currentFile: "", nextRunAt: null });
-        return;
+        while (!this.stopRequested && this.now() < nextRunAt) {
+          await this.sleep(Math.min(1000, nextRunAt - this.now()));
+        }
       }
-
-      const intervalSeconds = chooseIntervalSeconds(settings, this.random);
-      if (settings.randomIntervalEnabled) {
-        await this.log("info", `Random gap selected: ${formatInterval(intervalSeconds)}.`);
-      }
-      if (intervalSeconds === 0) {
-        await this.log("info", "No gap selected. Starting the next post immediately.");
-        this.update({ currentFile: "", message: "Starting next post immediately", nextRunAt: null });
-        continue;
-      }
-      const waitMilliseconds = intervalSeconds * 1000;
-      const nextRunAt = this.now() + waitMilliseconds;
-      this.update({
-        currentFile: "",
-        message: `Waiting ${formatInterval(intervalSeconds)}`,
-        nextRunAt
-      });
-
-      while (!this.stopRequested && this.now() < nextRunAt) {
-        await this.sleep(Math.min(1000, nextRunAt - this.now()));
-      }
+    } finally {
+      preparationPipeline?.stop();
     }
 
     this.running = false;
@@ -365,4 +451,4 @@ class AutomationRunner {
   }
 }
 
-module.exports = { AutomationRunner, chooseIntervalSeconds, formatInterval, randomChoice };
+module.exports = { AutomationRunner, PREPARATION_CONCURRENCY, chooseIntervalSeconds, formatInterval, randomChoice };

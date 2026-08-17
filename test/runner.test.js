@@ -247,6 +247,118 @@ test("runs the next queued post immediately when the gap is zero", async (t) => 
   assert.equal(data.logs.some((entry) => /starting the next post immediately/i.test(entry.message)), true);
 });
 
+test("prepares the daily batch ahead with no more than two converters", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  for (const name of ["video2.mp4", "video3.mp4", "video4.mp4"]) {
+    await fs.writeFile(path.join(data.root, name), "video");
+  }
+
+  let activePreparers = 0;
+  let maximumPreparers = 0;
+  const preparationStarts = [];
+  const published = [];
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    mediaPreparer: async (videoPath) => {
+      preparationStarts.push(path.basename(videoPath));
+      activePreparers += 1;
+      maximumPreparers = Math.max(maximumPreparers, activePreparers);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      activePreparers -= 1;
+      return { path: videoPath, temporary: false, mode: "unchanged" };
+    },
+    publisher: async ({ videoPath }) => {
+      published.push(path.basename(videoPath));
+      return { confirmed: true };
+    },
+    postedMover: async () => "posted"
+  });
+
+  await runner.start({ ...data.settings, intervalMinutes: 0 });
+  await waitUntilStopped(runner);
+
+  assert.equal(maximumPreparers, 2);
+  assert.deepEqual(preparationStarts.slice(0, 2), ["video1.mp4", "video2.mp4"]);
+  assert.deepEqual(published, ["video1.mp4", "video2.mp4", "video3.mp4", "video4.mp4"]);
+  assert.equal(runner.getStatus().dailyUploadCount, 4);
+});
+
+test("stops cleanly during batch preparation and retains finished conversions", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(data.root, "video2.mkv"), "video");
+  await fs.writeFile(path.join(data.root, "video3.mkv"), "video");
+
+  let releasePreparers;
+  const preparationGate = new Promise((resolve) => { releasePreparers = resolve; });
+  let started = 0;
+  let notifyStarted;
+  const twoStarted = new Promise((resolve) => { notifyStarted = resolve; });
+  const converted = [];
+  let publishCalls = 0;
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    mediaPreparer: async (videoPath, conversionRoot) => {
+      started += 1;
+      if (started === 2) notifyStarted();
+      await preparationGate;
+      await fs.mkdir(conversionRoot, { recursive: true });
+      const preparedPath = path.join(conversionRoot, `${path.basename(videoPath)}.mp4`);
+      await fs.writeFile(preparedPath, "prepared");
+      converted.push(preparedPath);
+      return { path: preparedPath, temporary: true, cached: true, mode: "transcoded" };
+    },
+    publisher: async () => { publishCalls += 1; return { confirmed: true }; },
+    postedMover: async () => "posted"
+  });
+
+  await runner.start({ ...data.settings, intervalMinutes: 0 });
+  await twoStarted;
+  await runner.stop();
+  releasePreparers();
+  await waitUntilStopped(runner);
+
+  assert.equal(publishCalls, 0);
+  assert.equal(data.history.length, 0);
+  assert.equal(runner.getStatus().mode, "idle");
+  assert.equal(converted.length, 2);
+  for (const preparedPath of converted) await fs.access(preparedPath);
+});
+
+test("a stopped queue does not report a late converter failure as an error", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  let rejectPreparation;
+  const preparation = new Promise((_resolve, reject) => { rejectPreparation = reject; });
+  let preparationStarted;
+  const started = new Promise((resolve) => { preparationStarted = resolve; });
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    mediaPreparer: async () => {
+      preparationStarted();
+      return preparation;
+    },
+    publisher: async () => ({ confirmed: true }),
+    postedMover: async () => "posted"
+  });
+
+  await runner.start(data.settings);
+  await started;
+  await runner.stop();
+  rejectPreparation(new Error("converter stopped after the safe-stop request"));
+  await waitUntilStopped(runner);
+
+  assert.equal(runner.getStatus().mode, "idle");
+  assert.equal(data.logs.some((entry) => entry.level === "error"), false);
+});
+
 test("waits for the account cooldown before uploading", async (t) => {
   const data = await fixture();
   t.after(() => fs.rm(data.root, { recursive: true, force: true }));

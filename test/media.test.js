@@ -64,6 +64,25 @@ test("transcodes incompatible MKV codecs to Instagram-safe H.264 and AAC", async
   });
 });
 
+test("reuses a prepared MP4 cache until the source file changes", async (t) => {
+  const root = await temporaryRoot(t);
+  const inputPath = path.join(root, "cached-source.mkv");
+  const conversionRoot = path.join(root, "converted");
+  await makeVideo(inputPath, "ffv1", "pcm_s16le");
+
+  const first = await prepareVideo(inputPath, conversionRoot, { ffmpegPath });
+  const second = await prepareVideo(inputPath, conversionRoot, { ffmpegPath });
+  assert.equal(first.cacheHit, false);
+  assert.equal(second.cacheHit, true);
+  assert.equal(second.path, first.path);
+
+  const originalStat = await fs.stat(inputPath);
+  await fs.utimes(inputPath, originalStat.atime, new Date(originalStat.mtimeMs + 2_000));
+  const changed = await prepareVideo(inputPath, conversionRoot, { ffmpegPath });
+  assert.equal(changed.cacheHit, false);
+  assert.notEqual(changed.path, first.path);
+});
+
 test("creates posted folder and preserves colliding filenames", async (t) => {
   const root = await temporaryRoot(t);
   const first = path.join(root, "movie.mkv");

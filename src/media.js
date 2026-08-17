@@ -4,6 +4,9 @@ const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const bundledFfmpegPath = require("ffmpeg-static");
 
+const CONVERSION_CACHE_VERSION = 2;
+const preparationJobs = new Map();
+
 function resolveFfmpegPath(
   candidate = bundledFfmpegPath,
   { resourcesPath = process.resourcesPath, platform = process.platform } = {}
@@ -62,32 +65,73 @@ async function prepareVideo(inputPath, conversionRoot, { ffmpegPath, onProgress 
 
   await fs.mkdir(conversionRoot, { recursive: true });
   const stem = path.basename(inputPath, path.extname(inputPath)).replace(/[^a-z0-9._-]+/gi, "-") || "video";
-  const outputPath = path.join(conversionRoot, `${stem}-${crypto.randomUUID()}.mp4`);
+  const sourceStat = await fs.stat(inputPath);
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({
+      version: CONVERSION_CACHE_VERSION,
+      path: path.resolve(inputPath),
+      size: sourceStat.size,
+      modified: sourceStat.mtimeMs,
+      video: media.video,
+      audio: media.audio,
+      pixelFormat: media.pixelFormat
+    }))
+    .digest("hex")
+    .slice(0, 24);
+  const outputPath = path.join(conversionRoot, `${stem}-${fingerprint}.mp4`);
+  const mode = isInstagramCompatible(media) ? "remuxed" : "transcoded";
+
+  const cachedStat = await fs.stat(outputPath).catch(() => null);
+  if (cachedStat?.isFile() && cachedStat.size > 0) {
+    onProgress("Using the prepared MP4 cache");
+    return { path: outputPath, temporary: true, cached: true, cacheHit: true, mode, media };
+  }
+
+  let preparationJob = preparationJobs.get(outputPath);
+  if (!preparationJob) {
+    preparationJob = (async () => {
+      const partialPath = path.join(conversionRoot, `${stem}-${fingerprint}-${crypto.randomUUID()}.partial.mp4`);
+      try {
+        if (mode === "remuxed") {
+          onProgress("Remuxing to MP4 without quality loss");
+          await runFfmpeg(
+            ["-y", "-i", inputPath, "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", "-avoid_negative_ts", "make_zero", partialPath],
+            { ffmpegPath: executable }
+          );
+        } else {
+          onProgress("Converting to high-quality MP4");
+          await runFfmpeg(
+            [
+              "-y", "-i", inputPath,
+              "-map", "0:v:0", "-map", "0:a:0?",
+              "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p",
+              "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+              "-movflags", "+faststart", partialPath
+            ],
+            { ffmpegPath: executable }
+          );
+        }
+        await fs.rename(partialPath, outputPath).catch(async (error) => {
+          if (error?.code !== "EEXIST") throw error;
+          await fs.rm(partialPath, { force: true });
+        });
+      } catch (error) {
+        await fs.rm(partialPath, { force: true }).catch(() => {});
+        throw error;
+      }
+    })().finally(() => {
+      preparationJobs.delete(outputPath);
+    });
+    preparationJobs.set(outputPath, preparationJob);
+  } else {
+    onProgress("Waiting for the existing MP4 preparation");
+  }
 
   try {
-    if (isInstagramCompatible(media)) {
-      onProgress("Remuxing to MP4 without quality loss");
-      await runFfmpeg(
-        ["-y", "-i", inputPath, "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", "-avoid_negative_ts", "make_zero", outputPath],
-        { ffmpegPath: executable }
-      );
-      return { path: outputPath, temporary: true, mode: "remuxed", media };
-    }
-
-    onProgress("Converting to high-quality Instagram MP4");
-    await runFfmpeg(
-      [
-        "-y", "-i", inputPath,
-        "-map", "0:v:0", "-map", "0:a:0?",
-        "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-        "-movflags", "+faststart", outputPath
-      ],
-      { ffmpegPath: executable }
-    );
-    return { path: outputPath, temporary: true, mode: "transcoded", media };
+    await preparationJob;
+    return { path: outputPath, temporary: true, cached: true, cacheHit: false, mode, media };
   } catch (error) {
-    await fs.rm(outputPath, { force: true }).catch(() => {});
     throw error;
   }
 }

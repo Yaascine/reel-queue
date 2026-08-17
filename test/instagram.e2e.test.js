@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { chromium } = require("playwright-core");
 const { findChrome } = require("../src/chrome");
-const { openComposer, publishReel, setVideoFile, VIDEO_FILE_SELECTION_TIMEOUT } = require("../src/instagram");
+const { openComposer, publishReel, setOriginalAspectRatio, setVideoFile, VIDEO_FILE_SELECTION_TIMEOUT } = require("../src/instagram");
 
 const mockInstagram = `<!doctype html>
 <html lang="en">
@@ -131,6 +131,39 @@ test("clicks the account-specific Post flyout before looking for the file select
   const input = await openComposer(page, `http://127.0.0.1:${server.address().port}`);
   assert.equal(await input.getAttribute("id"), "video");
   assert.deepEqual(await page.evaluate(() => window.testEvents), ["create", "post"]);
+});
+
+test("selects Original from Instagram's unlabeled lower-left aspect arrow", { skip: !findChrome(), timeout: 10_000 }, async (t) => {
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 900, height: 800 } });
+  await page.setContent(`<!doctype html><html><head><style>
+    #dialog { position: relative; width: 600px; height: 650px; margin: 20px auto; }
+    #preview { position: absolute; left: 80px; top: 70px; width: 440px; height: 540px; }
+    #aspect, #multiple { position: absolute; bottom: 16px; width: 54px; height: 54px; }
+    #aspect { left: 92px; } #multiple { right: 92px; }
+  </style></head><body>
+    <section id="dialog" role="dialog">
+      <button style="position:absolute;right:12px;top:12px">Next</button>
+      <canvas id="preview" width="440" height="540"></canvas>
+      <div id="aspect" role="button" tabindex="0"><svg viewBox="0 0 24 24"><path d="M4 10V4h6M20 14v6h-6"/></svg></div>
+      <div id="multiple" role="button" tabindex="0" aria-label="Select multiple"><svg></svg></div>
+    </section>
+    <script>
+      window.testEvents = [];
+      document.querySelector('#multiple').onclick = () => window.testEvents.push('multiple');
+      document.querySelector('#aspect').onclick = () => {
+        window.testEvents.push('aspect');
+        const menu = document.createElement('div');
+        menu.innerHTML = '<button id="original" role="menuitem">Original</button><button role="menuitem">1:1</button>';
+        document.querySelector('#dialog').append(menu);
+        document.querySelector('#original').onclick = () => window.testEvents.push('original');
+      };
+    </script>
+  </body></html>`);
+
+  assert.equal(await setOriginalAspectRatio(page), true);
+  assert.deepEqual(await page.evaluate(() => window.testEvents), ["aspect", "original"]);
 });
 
 test("publishes through the current two-step edit and caption flow", { skip: !findChrome() }, async (t) => {

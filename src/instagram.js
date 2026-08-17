@@ -171,30 +171,110 @@ async function setVideoFile(input, videoPath, page) {
   });
 }
 
-async function setOriginalAspectRatio(page) {
-  const cropControl = await firstVisible(
-    [
-      ...namedLocators(page, ["Select crop", "Crop", "Change aspect ratio"]),
-      page.locator(
-        '[aria-label*="select crop" i], [aria-label*="aspect ratio" i], button:has(svg[aria-label*="crop" i])'
-      )
-    ],
-    0
-  );
-  if (!cropControl) return false;
+function originalOptionLocators(page) {
+  return [
+    ...namedLocators(page, ["Original"], ["button", "menuitem", "option", "radio"]),
+    page.getByText(/^\s*Original\s*$/i, { exact: true })
+  ];
+}
 
-  await cropControl.click();
-  const originalOption = await firstVisible(
-    [
-      ...namedLocators(page, ["Original"], ["button", "menuitem", "option", "radio"]),
-      page.getByText(/^\s*Original\s*$/i, { exact: true })
-    ],
-    0
-  );
-  if (!originalOption) return false;
+function aspectRatioControlLocators(page) {
+  const hint = /(select|change|adjust|choose|toggle)?\s*(crop|aspect ratio|media size|resize|expand|fit)/i;
+  return [
+    ...namedLocators(page, [
+      "Select crop", "Crop", "Change aspect ratio", "Aspect ratio", "Adjust crop",
+      "Choose crop", "Toggle crop", "Media size", "Resize", "Expand", "Fit"
+    ]),
+    page.getByRole("button", { name: hint }),
+    page.locator([
+      '[aria-label*="crop" i]', '[aria-label*="aspect" i]', '[aria-label*="media size" i]',
+      '[aria-label*="resize" i]', '[aria-label*="expand" i]', '[title*="crop" i]',
+      '[title*="aspect" i]', '[title*="resize" i]', '[title*="expand" i]',
+      'button:has(svg[aria-label*="crop" i])', '[role="button"]:has(svg[aria-label*="crop" i])',
+      'button:has(svg[aria-label*="aspect" i])', '[role="button"]:has(svg[aria-label*="aspect" i])',
+      'button:has(svg[aria-label*="expand" i])', '[role="button"]:has(svg[aria-label*="expand" i])'
+    ].join(", "))
+  ];
+}
 
-  await originalOption.click();
+async function structuralAspectRatioControls(page) {
+  const dialogs = page.locator('[role="dialog"]:visible');
+  const dialogCount = await dialogs.count().catch(() => 0);
+  const scope = dialogCount ? dialogs.nth(dialogCount - 1) : page.locator("body");
+  const scopeBox = await scope.boundingBox().catch(() => null);
+  if (!scopeBox) return [];
+
+  const mediaElements = scope.locator("video:visible, canvas:visible, img:visible");
+  let mediaBox = null;
+  for (let index = 0, count = await mediaElements.count().catch(() => 0); index < count; index += 1) {
+    const box = await mediaElements.nth(index).boundingBox().catch(() => null);
+    if (box && (!mediaBox || box.width * box.height > mediaBox.width * mediaBox.height)) mediaBox = box;
+  }
+  const anchor = mediaBox || scopeBox;
+  const controls = scope.locator('button:visible, [role="button"]:visible');
+  const ranked = [];
+  for (let index = 0, count = await controls.count().catch(() => 0); index < count; index += 1) {
+    const control = controls.nth(index);
+    const box = await control.boundingBox().catch(() => null);
+    if (!box || box.width < 18 || box.height < 18 || box.width > 110 || box.height > 110) continue;
+    const details = await control.evaluate((element) => ({
+      text: (element.textContent || "").trim(),
+      label: [
+        element.getAttribute("aria-label"),
+        element.getAttribute("title"),
+        ...[...element.querySelectorAll("svg")].flatMap((svg) => [
+          svg.getAttribute("aria-label"), svg.getAttribute("title"), svg.querySelector("title")?.textContent
+        ])
+      ].filter(Boolean).join(" ")
+    })).catch(() => ({ text: "", label: "" }));
+    const description = `${details.label} ${details.text}`.trim();
+    if (/next|back|cancel|close|share|multiple|carousel|gallery|select from|computer/i.test(description)) continue;
+
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height / 2;
+    const isAspectHint = /crop|aspect|resize|expand|fit|media size/i.test(description);
+    const isBottomLeftIcon = details.text.length === 0
+      && centerX >= anchor.x - 20
+      && centerX <= anchor.x + anchor.width * 0.45
+      && centerY >= anchor.y + anchor.height * 0.5
+      && centerY <= anchor.y + anchor.height + 20;
+    if (!isAspectHint && !isBottomLeftIcon) continue;
+
+    const targetX = anchor.x + Math.min(42, anchor.width * 0.08);
+    const targetY = anchor.y + anchor.height - Math.min(42, anchor.height * 0.08);
+    const distance = Math.hypot(centerX - targetX, centerY - targetY);
+    ranked.push({ control, score: (isAspectHint ? -10_000 : 0) + distance });
+  }
+  return ranked.sort((left, right) => left.score - right.score).map(({ control }) => control);
+}
+
+async function clickOriginalOption(page, timeout = 800) {
+  const option = await firstVisible(originalOptionLocators(page), timeout);
+  if (!option) return false;
+  await option.click({ force: true });
   return true;
+}
+
+async function setOriginalAspectRatio(page) {
+  while (true) {
+    // Some account variants leave the aspect-ratio menu open after processing.
+    if (await clickOriginalOption(page, 300)) return true;
+
+    const labelledControl = await firstVisible(aspectRatioControlLocators(page), 700);
+    if (labelledControl) {
+      await labelledControl.click({ force: true }).catch(() => {});
+      if (await clickOriginalOption(page, 2_500)) return true;
+    }
+
+    // Instagram's newer composer renders the lower-left crop arrow as an
+    // unlabeled div. Rank only small icon controls in the lower-left of the
+    // active media preview so the lower-right multiple-files button is ignored.
+    for (const control of await structuralAspectRatioControls(page)) {
+      await control.click({ force: true }).catch(() => {});
+      if (await clickOriginalOption(page, 2_500)) return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 async function setCoverFile(page, thumbnailPath) {
