@@ -172,7 +172,7 @@ async function publishTikTok({
     await assertTikTokLogin(page);
 
     stage = "selecting the video";
-    onStep("Loading the video into TikTok (large files can take several minutes)");
+    onStep("Uploading the prepared MP4 to TikTok");
     const input = await waitForVideoInput(page);
     if (!input) {
       await assertTikTokLogin(page);

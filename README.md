@@ -30,7 +30,9 @@ Queue control shows the current account's accepted-upload count, remaining allow
 
 - Videos are processed in natural filename order.
 - MKV, WebM, AVI, WMV, FLV, MPEG, MOV, MP4, M4V, transport streams, and other common containers are supported.
-- Compatible H.264/AAC streams are remuxed to MP4 without re-encoding. Incompatible codecs are converted to high-quality H.264/AAC.
+- Compact H.264/AAC streams are remuxed to MP4 without re-encoding. Videos that are oversized, above 30 FPS, above the fast-upload bitrate, or use incompatible codecs are converted into smaller H.264/AAC MP4s.
+- Fast conversion automatically tries Apple VideoToolbox, NVIDIA NVENC, Intel Quick Sync, or AMD AMF. If no compatible GPU is available, it falls back to fast CPU encoding instead of failing the queue.
+- Fast uploads preserve the source aspect ratio, cap oversized vertical video at 1080×1920 (landscape at 1920×1080), target 7 Mbps video with a 9 Mbps ceiling, and use 128 kbps AAC audio.
 - The next daily batch is prepared with two background converter workers. Prepared MP4s are cached across safe stops and restarts, so stopping before upload 22 does not discard completed conversion work.
 - Files over 50 MB are passed to the local Chrome session directly instead of through Playwright's remote-transfer channel.
 - Upload, processing, and final-confirmation waits do not expire while Chrome remains open, so slow connections are not treated as failures.

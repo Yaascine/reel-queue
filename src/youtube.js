@@ -99,7 +99,7 @@ async function publishYouTubeShort({
     const videoInput = await openUpload(page, baseUrl);
 
     stage = "selecting the video";
-    onStep("Loading the video into YouTube (large files can take several minutes)");
+    onStep("Uploading the prepared MP4 to YouTube");
     await setVideoInputFile(videoInput, videoPath, {
       platform: "YouTube",
       page,

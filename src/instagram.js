@@ -381,7 +381,7 @@ async function publishReel({
     const videoInput = await openComposer(page, baseUrl);
 
     stage = "selecting the video";
-    onStep("Loading the video into Instagram (large files can take several minutes)");
+    onStep("Uploading the prepared MP4 to Instagram");
     await setVideoFile(videoInput, videoPath, page);
 
     const formatDialog = await firstVisible(namedLocators(page, ["OK", "Continue"]), 2_000);

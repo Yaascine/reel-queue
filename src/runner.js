@@ -26,6 +26,13 @@ function formatInterval(seconds) {
   return `${Math.floor(seconds / 60)} minute(s) ${seconds % 60} second(s)`;
 }
 
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  return bytes >= 1_000_000
+    ? `${(bytes / 1_000_000).toFixed(bytes >= 100_000_000 ? 0 : 1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1_000))} KB`;
+}
+
 class AutomationRunner {
   constructor({ workspaceId = "", platform = "instagram", store, chrome, emit, saveSettings, publisher = publishReel, mediaPreparer = prepareVideo, postedMover = moveToPosted, random = Math.random, now = Date.now, sleeper = sleep }) {
     this.workspaceId = workspaceId;
@@ -296,7 +303,15 @@ class AutomationRunner {
         if (prepared.mode === "remuxed") {
           await this.log("info", `${prepared.cacheHit ? "Reused" : "Prepared"} ${path.basename(videoPath)} without re-encoding.`, { filePath: videoPath });
         } else if (prepared.mode === "transcoded") {
-          await this.log("info", `${prepared.cacheHit ? "Reused the prepared MP4 for" : "Converted"} ${path.basename(videoPath)}.`, { filePath: videoPath });
+          const sourceSize = formatFileSize(prepared.sourceBytes);
+          const outputSize = formatFileSize(prepared.outputBytes);
+          const sizeSummary = sourceSize && outputSize ? ` (${sourceSize} → ${outputSize})` : "";
+          const conversionMethod = prepared.cacheHit
+            ? "Reused the fast prepared MP4 for"
+            : prepared.hardwareAccelerated
+              ? `GPU-converted with ${prepared.encoder.replace("h264_", "")}`
+              : "Fast-converted";
+          await this.log("info", `${conversionMethod} ${path.basename(videoPath)}${sizeSummary}.`, { filePath: videoPath });
         }
 
         let submissionRecorded = false;
@@ -451,4 +466,4 @@ class AutomationRunner {
   }
 }
 
-module.exports = { AutomationRunner, PREPARATION_CONCURRENCY, chooseIntervalSeconds, formatInterval, randomChoice };
+module.exports = { AutomationRunner, PREPARATION_CONCURRENCY, chooseIntervalSeconds, formatFileSize, formatInterval, randomChoice };
