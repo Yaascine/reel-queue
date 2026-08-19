@@ -9,6 +9,7 @@ const VIDEO_EXTENSIONS = new Set([
 const PLATFORMS = new Set(["instagram", "youtube", "tiktok"]);
 const IMAGE_EXTENSIONS = new Set([".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png"]);
 const DAILY_UPLOAD_LIMIT = 22;
+const MAX_DAILY_UPLOAD_LIMIT = 1000;
 const UPLOAD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function normalizeTextPool(value, maximumLength) {
@@ -37,6 +38,13 @@ function normalizePlatform(value) {
   return PLATFORMS.has(value) ? value : "instagram";
 }
 
+function normalizeDailyUploadLimit(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit)
+    ? Math.min(MAX_DAILY_UPLOAD_LIMIT, Math.max(1, Math.round(limit)))
+    : DAILY_UPLOAD_LIMIT;
+}
+
 function normalizeSettings(input = {}, platform = "instagram") {
   const normalizedPlatform = normalizePlatform(platform);
   const intervalUnit = normalizeIntervalUnit(input.intervalUnit);
@@ -56,7 +64,9 @@ function normalizeSettings(input = {}, platform = "instagram") {
       ? input.thumbnailMode
       : (input.thumbnailFolder ? "folder" : input.thumbnailPath ? "single" : "automatic"),
     thumbnailFolder: typeof input.thumbnailFolder === "string" ? input.thumbnailFolder : "",
-    savedCaptions: normalizeTextPool(input.savedCaptions, 2200)
+    savedCaptions: normalizeTextPool(input.savedCaptions, 2200),
+    dailyLimitEnabled: input.dailyLimitEnabled !== false,
+    dailyUploadLimit: normalizeDailyUploadLimit(input.dailyUploadLimit)
   };
   if (normalizedPlatform === "youtube") {
     return {
@@ -120,7 +130,9 @@ module.exports = {
   IMAGE_EXTENSIONS,
   PLATFORMS,
   DAILY_UPLOAD_LIMIT,
+  MAX_DAILY_UPLOAD_LIMIT,
   UPLOAD_WINDOW_MS,
+  normalizeDailyUploadLimit,
   normalizePlatform,
   normalizeSettings,
   isSupportedVideo,

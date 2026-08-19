@@ -14,6 +14,8 @@ function managerFixture() {
     listWorkspaces: async () => workspaces,
     getWorkspace: async (id) => workspaces.find((workspace) => workspace.id === id) || null,
     getUploadAllowance: async () => ({ allowed: true, count: 0, limit: 22, nextAllowedAt: null }),
+    resetUploadAllowance: async () => true,
+    appendLog: async (level, message, details) => ({ at: new Date().toISOString(), level, message, ...details }),
     saveWorkspaceSettings: async (_id, settings) => settings,
     removeWorkspace: async () => true
   };
@@ -66,6 +68,20 @@ test("loads the saved account upload counter into queue status", async () => {
   const statuses = await manager.getStatuses([workspace]);
   assert.equal(statuses.mma.dailyUploadCount, 7);
   assert.equal(statuses.mma.dailyUploadLimit, 22);
+});
+
+test("manually resets only the account selected by a queue", async () => {
+  const { manager } = managerFixture();
+  const workspace = await manager.store.getWorkspace("mma");
+  workspace.settings.profileId = "instagram-account";
+  let resetCall;
+  manager.store.resetUploadAllowance = async (profileId, details) => { resetCall = { profileId, details }; };
+
+  const status = await manager.resetUploadAllowance("mma");
+
+  assert.equal(resetCall.profileId, "instagram-account");
+  assert.deepEqual(resetCall.details, { workspaceId: "mma", platform: "instagram" });
+  assert.equal(status.workspaceId, "mma");
 });
 
 test("prevents two queues from controlling the same Instagram profile", async () => {

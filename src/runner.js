@@ -58,6 +58,7 @@ class AutomationRunner {
       nextRunAt: null,
       dailyUploadCount: 0,
       dailyUploadLimit: DAILY_UPLOAD_LIMIT,
+      dailyLimitEnabled: true,
       preparationReady: 0,
       preparationTotal: 0
     };
@@ -157,23 +158,28 @@ class AutomationRunner {
     return this.getStatus();
   }
 
-  async refreshUploadAllowance(profileId, emit = true) {
-    const allowance = await this.store.getUploadAllowance(profileId, this.now());
+  async refreshUploadAllowance(profileId, emit = true, settings = {}) {
+    const allowance = await this.store.getUploadAllowance(profileId, this.now(), {
+      enabled: settings.dailyLimitEnabled,
+      limit: settings.dailyUploadLimit
+    });
+    const enabled = allowance.enabled !== false;
     const patch = {
       dailyUploadCount: allowance.count,
       dailyUploadLimit: allowance.limit,
+      dailyLimitEnabled: enabled,
       dailyUploadRemaining: Math.max(0, allowance.limit - allowance.count),
       dailyUploadResetAt: allowance.nextAllowedAt
     };
     if (emit) this.update(patch);
     else this.state = { ...this.state, ...patch };
-    return allowance;
+    return { ...allowance, enabled };
   }
 
   async waitForUploadCapacity(settings) {
     let loggedNextAllowedAt = null;
     while (!this.stopRequested) {
-      const allowance = await this.refreshUploadAllowance(settings.profileId);
+      const allowance = await this.refreshUploadAllowance(settings.profileId, true, settings);
       if (allowance.allowed) return true;
 
       const nextRunAt = Math.max(this.now() + 1000, allowance.nextAllowedAt || this.now() + 1000);
@@ -191,6 +197,8 @@ class AutomationRunner {
       });
       while (!this.stopRequested && this.now() < nextRunAt) {
         await this.sleep(Math.min(1000, nextRunAt - this.now()));
+        const refreshed = await this.refreshUploadAllowance(settings.profileId, true, settings);
+        if (refreshed.allowed) break;
       }
     }
     return false;
@@ -270,8 +278,10 @@ class AutomationRunner {
         }
         if (!(await this.waitForUploadCapacity(settings))) break;
 
-        const allowance = await this.refreshUploadAllowance(settings.profileId);
-        const dailyCapacity = Math.max(1, allowance.limit - allowance.count);
+        const allowance = await this.refreshUploadAllowance(settings.profileId, true, settings);
+        const dailyCapacity = allowance.enabled
+          ? Math.max(1, allowance.limit - allowance.count)
+          : pending.length;
         if (!preparationPipeline || !preparationPipeline.has(pending[0])) {
           preparationPipeline?.stop();
           const dailyBatch = pending.slice(0, dailyCapacity);
@@ -356,7 +366,7 @@ class AutomationRunner {
                 filePath: videoPath,
                 fileName: path.basename(videoPath)
               });
-              await this.refreshUploadAllowance(settings.profileId);
+              await this.refreshUploadAllowance(settings.profileId, true, settings);
             }
           });
         } catch (error) {
@@ -390,7 +400,7 @@ class AutomationRunner {
           await this.log("success", `Posted ${path.basename(videoPath)}.`, { filePath: videoPath }).catch(() => {});
         }
 
-        await this.refreshUploadAllowance(settings.profileId).catch(async (error) => {
+        await this.refreshUploadAllowance(settings.profileId, true, settings).catch(async (error) => {
           await this.log("warning", `Posted successfully, but could not refresh the account upload counter: ${error.message}`).catch(() => {});
         });
 

@@ -181,11 +181,22 @@
               </span>
             </div>
 
-            <div class="check-row quota-rule">
-              <span>
-                <strong>22 uploads, then a 24-hour account cooldown</strong>
-                <small>After upload 22, Reel Queue waits 24 hours from that newest upload and then resumes with a fresh allowance. Every account is tracked separately.</small>
-              </span>
+            <div class="quota-rule">
+              <label class="check-row quota-toggle">
+                <input id="dailyLimitEnabled" type="checkbox" checked />
+                <span>
+                  <strong>Limit uploads in each 24-hour period</strong>
+                  <small>When enabled, this queue posts unattended until it reaches your chosen account limit.</small>
+                </span>
+              </label>
+              <div id="dailyLimitControls" class="quota-controls">
+                <label>
+                  <span>Maximum uploads</span>
+                  <input id="dailyLimitInput" type="number" min="1" max="1000" step="1" value="22" inputmode="numeric" />
+                </label>
+                <button id="resetDailyLimitButton" class="button secondary" type="button">Reset counter</button>
+                <small>Reset gives this account a fresh Reel Queue allowance. It does not delete posts or change platform limits.</small>
+              </div>
             </div>
           </div>
         </section>

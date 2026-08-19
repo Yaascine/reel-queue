@@ -3,6 +3,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const {
   DAILY_UPLOAD_LIMIT,
+  MAX_DAILY_UPLOAD_LIMIT,
   UPLOAD_WINDOW_MS,
   normalizePlatform,
   normalizeSettings,
@@ -13,7 +14,16 @@ const {
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const RETRYABLE_FILE_ERRORS = new Set(["EACCES", "EBUSY", "EEXIST", "EPERM"]);
 
-function summarizeUploadAllowance(history, profileId, now = Date.now()) {
+function summarizeUploadAllowance(history, profileId, now = Date.now(), options = {}) {
+  const enabled = options.enabled !== false;
+  const limit = Number.isFinite(Number(options.limit))
+    ? Math.min(MAX_DAILY_UPLOAD_LIMIT, Math.max(1, Math.round(Number(options.limit))))
+    : DAILY_UPLOAD_LIMIT;
+  const latestResetAt = history.reduce((latest, entry) => {
+    if (entry?.profileId !== profileId || entry.status !== "limit_reset") return latest;
+    const resetAt = Date.parse(entry.createdAt);
+    return Number.isFinite(resetAt) ? Math.max(latest, Math.min(resetAt, now)) : latest;
+  }, Number.NEGATIVE_INFINITY);
   const acceptedByUpload = new Map();
   for (const entry of history) {
     if (entry?.profileId !== profileId || !["posted", "submitted"].includes(entry.status)) continue;
@@ -26,7 +36,7 @@ function summarizeUploadAllowance(history, profileId, now = Date.now()) {
     if (existing === undefined || acceptedAt < existing) acceptedByUpload.set(uploadKey, acceptedAt);
   }
 
-  const cutoff = now - UPLOAD_WINDOW_MS;
+  const cutoff = Math.max(now - UPLOAD_WINDOW_MS, latestResetAt);
   const recentUploads = [...acceptedByUpload.values()]
     // If the system clock moved backward, count future-dated records as newly
     // accepted instead of accidentally opening extra upload slots.
@@ -34,12 +44,12 @@ function summarizeUploadAllowance(history, profileId, now = Date.now()) {
     .filter((acceptedAt) => acceptedAt > cutoff)
     .sort((left, right) => left - right);
   const count = recentUploads.length;
-  // Once the account reaches its 22-upload batch, start one full 24-hour
+  // Once the account reaches its chosen batch size, start one full 24-hour
   // cooldown from the newest accepted upload—not from the oldest slot.
-  const nextAllowedAt = count >= DAILY_UPLOAD_LIMIT
+  const nextAllowedAt = enabled && count >= limit
     ? recentUploads[recentUploads.length - 1] + UPLOAD_WINDOW_MS
     : null;
-  return { allowed: count < DAILY_UPLOAD_LIMIT, count, limit: DAILY_UPLOAD_LIMIT, nextAllowedAt };
+  return { enabled, allowed: !enabled || count < limit, count, limit, nextAllowedAt };
 }
 
 async function replaceFileWithRetry(fileSystem, temporaryPath, filePath, attempts = 40) {
@@ -400,8 +410,14 @@ class AppStore {
     );
   }
 
-  async getUploadAllowance(profileId, now = Date.now()) {
-    return summarizeUploadAllowance(await this.getHistory(), profileId, now);
+  async getUploadAllowance(profileId, now = Date.now(), options = {}) {
+    return summarizeUploadAllowance(await this.getHistory(), profileId, now, options);
+  }
+
+  async resetUploadAllowance(profileId, details = {}) {
+    if (!profileId) throw new Error("Choose an account profile before resetting its counter.");
+    await this.addHistory({ ...details, status: "limit_reset", profileId });
+    return true;
   }
 
   async addHistory(entry) {

@@ -39,7 +39,7 @@ class AutomationManager {
     const entries = await Promise.all(items.map(async (workspace) => {
       const runner = await this.ensureRunner(workspace.id);
       if (workspace.settings.profileId) {
-        await runner.refreshUploadAllowance(workspace.settings.profileId, false);
+        await runner.refreshUploadAllowance(workspace.settings.profileId, false, workspace.settings);
       }
       return [workspace.id, runner.getStatus()];
     }));
@@ -75,6 +75,26 @@ class AutomationManager {
 
   async stop(workspaceId) {
     return (await this.ensureRunner(workspaceId)).stop();
+  }
+
+  async resetUploadAllowance(workspaceId) {
+    const workspace = await this.store.getWorkspace(workspaceId);
+    if (!workspace) throw new Error("Queue not found.");
+    if (!workspace.settings.profileId) throw new Error("Choose an account profile before resetting its counter.");
+    await this.store.resetUploadAllowance(workspace.settings.profileId, {
+      workspaceId,
+      platform: workspace.platform
+    });
+    const runner = await this.ensureRunner(workspaceId);
+    await runner.refreshUploadAllowance(workspace.settings.profileId, false, workspace.settings);
+    const status = runner.getStatus();
+    this.emit("status", status);
+    const entry = await this.store.appendLog("info", "The 24-hour upload counter was reset manually.", {
+      workspaceId,
+      profileId: workspace.settings.profileId
+    });
+    this.emit("log", entry);
+    return status;
   }
 
   async remove(workspaceId) {

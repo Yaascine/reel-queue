@@ -22,11 +22,13 @@ async function fixture() {
     saveSettings: async (settings) => settings,
     hasSuccessfulPost: async (profileId, filePath) =>
       history.some((entry) => entry.profileId === profileId && entry.filePath === filePath),
-    getUploadAllowance: async (profileId) => {
+    getUploadAllowance: async (profileId, _now, options = {}) => {
       const count = new Set(history
         .filter((entry) => entry.profileId === profileId && ["posted", "submitted"].includes(entry.status))
         .map((entry) => entry.filePath)).size;
-      return { allowed: count < 22, count, limit: 22, nextAllowedAt: null };
+      const enabled = options.enabled !== false;
+      const limit = Number(options.limit) || 22;
+      return { enabled, allowed: !enabled || count < limit, count, limit, nextAllowedAt: null };
     },
     addHistory: async (entry) => history.push(entry),
     appendLog: async (level, message, details) => {
@@ -247,6 +249,54 @@ test("runs the next queued post immediately when the gap is zero", async (t) => 
   assert.equal(data.logs.some((entry) => /starting the next post immediately/i.test(entry.message)), true);
 });
 
+test("posts unattended only up to the queue's selected 24-hour limit", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(data.root, "video2.mp4"), "video");
+  await fs.writeFile(path.join(data.root, "video3.mp4"), "video");
+  const published = [];
+  let runner;
+  runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    sleeper: async () => { await runner.stop(); },
+    publisher: async ({ videoPath }) => { published.push(path.basename(videoPath)); return { confirmed: true }; },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+
+  await runner.start({ ...data.settings, intervalMinutes: 0, dailyLimitEnabled: true, dailyUploadLimit: 2 });
+  await waitUntilStopped(runner);
+
+  assert.deepEqual(published, ["video1.mp4", "video2.mp4"]);
+  assert.equal(runner.getStatus().dailyUploadCount, 2);
+  assert.equal(runner.getStatus().dailyUploadLimit, 2);
+  assert.equal(data.logs.some((entry) => /daily account limit reached \(2\/2\)/i.test(entry.message)), true);
+});
+
+test("posts the whole queue when the account upload limit is disabled", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(data.root, "video2.mp4"), "video");
+  await fs.writeFile(path.join(data.root, "video3.mp4"), "video");
+  const published = [];
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    publisher: async ({ videoPath }) => { published.push(path.basename(videoPath)); return { confirmed: true }; },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+
+  await runner.start({ ...data.settings, intervalMinutes: 0, dailyLimitEnabled: false, dailyUploadLimit: 1 });
+  await waitUntilStopped(runner);
+
+  assert.deepEqual(published, ["video1.mp4", "video2.mp4", "video3.mp4"]);
+  assert.equal(runner.getStatus().dailyLimitEnabled, false);
+});
+
 test("prepares the daily batch ahead with no more than two converters", async (t) => {
   const data = await fixture();
   t.after(() => fs.rm(data.root, { recursive: true, force: true }));
@@ -384,6 +434,36 @@ test("waits for the account cooldown before uploading", async (t) => {
   assert.equal(publishCalls, 1);
   assert.equal(currentTime, 5_000);
   assert.equal(data.logs.some((entry) => /daily account limit reached \(22\/22\)/i.test(entry.message)), true);
+});
+
+test("resumes a waiting queue as soon as its upload counter is reset", async (t) => {
+  const data = await fixture();
+  t.after(() => fs.rm(data.root, { recursive: true, force: true }));
+  let reset = false;
+  let publishCalls = 0;
+  data.store.getUploadAllowance = async (_profileId, _now, options = {}) => ({
+    enabled: true,
+    allowed: reset,
+    count: reset ? 0 : 2,
+    limit: Number(options.limit) || 2,
+    nextAllowedAt: reset ? null : 100_000
+  });
+  const runner = new AutomationRunner({
+    store: data.store,
+    chrome: { open: async () => ({ page: {} }) },
+    emit: () => {},
+    now: () => 1_000,
+    sleeper: async () => { reset = true; },
+    publisher: async () => { publishCalls += 1; return { confirmed: true }; },
+    mediaPreparer: async (videoPath) => ({ path: videoPath, temporary: false, mode: "unchanged" }),
+    postedMover: async () => "posted"
+  });
+
+  await runner.start({ ...data.settings, dailyUploadLimit: 2 });
+  await waitUntilStopped(runner);
+
+  assert.equal(publishCalls, 1);
+  assert.equal(runner.getStatus().mode, "complete");
 });
 
 test("rejects landscape videos from a YouTube Shorts queue", async (t) => {

@@ -274,7 +274,27 @@ textarea { resize: vertical; min-height: 118px; line-height: 1.5; }
 .check-row input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--accent); }
 .check-row strong { display: block; font-size: 12px; }
 .check-row small { display: block; margin-top: 3px; color: var(--text-soft); line-height: 1.45; }
-.quota-rule { margin-top: -8px; border-left: 3px solid var(--accent); }
+.quota-rule {
+  grid-column: 1 / -1;
+  margin-top: -8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-small);
+  background: var(--surface-muted);
+}
+.quota-rule .quota-toggle { border-radius: 0; background: transparent; }
+.quota-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) auto 1fr;
+  align-items: end;
+  gap: 12px;
+  padding: 0 14px 14px 41px;
+}
+.quota-controls[hidden] { display: none; }
+.quota-controls label > span { display: block; margin-bottom: 6px; color: var(--text-soft); font-size: 11px; }
+.quota-controls input { width: 100%; }
+.quota-controls > small { align-self: center; color: var(--text-soft); font-size: 11px; line-height: 1.4; }
 
 .pool-actions { display: flex; align-items: center; gap: 12px; margin-top: 9px; }
 .pool-actions .helper { margin-top: 0; }
@@ -359,6 +379,8 @@ dialog form > p { margin: 6px 0 20px; color: var(--text-soft); font-size: 12px; 
   .platform-nav { order: 3; width: 100%; }
   .platform-tab { flex: 1; }
   .random-range { grid-template-columns: 1fr auto 1fr; }
+  .quota-controls { grid-template-columns: minmax(130px, 1fr) auto; }
+  .quota-controls > small { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

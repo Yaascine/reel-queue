@@ -11,6 +11,7 @@ const elements = Object.fromEntries(
     "youtubeTitleField", "youtubeTitleInput", "youtubeTitleCount", "youtubeDescriptionField", "youtubeDescriptionInput",
     "youtubeDescriptionCount", "saveDescriptionButton", "descriptionPool", "privacyField",
     "privacySelect", "privacyHelp", "madeForKidsField", "madeForKidsInput", "postedHelp", "safetyCopy",
+    "dailyLimitEnabled", "dailyLimitControls", "dailyLimitInput", "resetDailyLimitButton",
     "runMessage", "queueCount", "dailyUploadCount", "dailyUploadProgress", "dailyUploadRemaining",
     "currentFileBlock", "currentFile", "startButton", "stopButton",
     "activityList", "openDiagnosticsButton", "clearLogButton", "profileDialog", "profileDialogCopy",
@@ -71,7 +72,9 @@ function settingsFromForm() {
     randomIntervalEnabled: elements.randomIntervalEnabled.checked,
     randomIntervalMinMinutes: minutesFromControl(elements.randomIntervalMinInput.value, elements.randomIntervalUnitSelect.value),
     randomIntervalMaxMinutes: minutesFromControl(elements.randomIntervalMaxInput.value, elements.randomIntervalUnitSelect.value),
-    randomIntervalUnit: elements.randomIntervalUnitSelect.value
+    randomIntervalUnit: elements.randomIntervalUnitSelect.value,
+    dailyLimitEnabled: elements.dailyLimitEnabled.checked,
+    dailyUploadLimit: elements.dailyLimitInput.value
   };
   if (activePlatform === "youtube") {
     return {
@@ -103,11 +106,23 @@ function formatCounterDuration(milliseconds) {
 }
 
 function renderDailyUploadAllowance(status, now = Date.now()) {
-  const dailyLimit = Math.max(1, Number(status.dailyUploadLimit) || 22);
+  const settings = activeWorkspace()?.settings || {};
+  const enabled = typeof status.dailyLimitEnabled === "boolean"
+    ? status.dailyLimitEnabled
+    : settings.dailyLimitEnabled !== false;
+  const dailyLimit = Math.max(1, Number(status.dailyUploadLimit) || Number(settings.dailyUploadLimit) || 22);
   const resetAt = Number(status.dailyUploadResetAt) || 0;
   const resetComplete = resetAt > 0 && resetAt <= now;
   const dailyCount = resetComplete ? 0 : Math.max(0, Number(status.dailyUploadCount) || 0);
   const dailyRemaining = Math.max(0, dailyLimit - dailyCount);
+  if (!enabled) {
+    elements.dailyUploadCount.textContent = "Off";
+    elements.dailyUploadProgress.max = 1;
+    elements.dailyUploadProgress.value = 0;
+    elements.dailyUploadProgress.textContent = "Upload limit disabled";
+    elements.dailyUploadRemaining.textContent = "No Reel Queue upload limit is active for this account";
+    return;
+  }
   elements.dailyUploadCount.textContent = `${dailyCount} / ${dailyLimit}`;
   elements.dailyUploadProgress.max = dailyLimit;
   elements.dailyUploadProgress.value = Math.min(dailyLimit, dailyCount);
@@ -117,6 +132,13 @@ function renderDailyUploadAllowance(status, now = Date.now()) {
   } else {
     elements.dailyUploadRemaining.textContent = `${dailyRemaining} upload${dailyRemaining === 1 ? "" : "s"} available before cooldown`;
   }
+}
+
+function syncDailyLimitControls(running = activeStatus().running) {
+  const enabled = elements.dailyLimitEnabled.checked;
+  elements.dailyLimitEnabled.disabled = running;
+  elements.dailyLimitInput.disabled = running || !enabled;
+  elements.resetDailyLimitButton.disabled = !elements.profileSelect.value;
 }
 
 function renderTextPool(container, items, settingName) {
@@ -291,10 +313,13 @@ function populateForm() {
   elements.randomIntervalUnitSelect.dataset.previousUnit = elements.randomIntervalUnitSelect.value;
   elements.randomIntervalMinInput.value = controlValueFromMinutes(settings.randomIntervalMinMinutes, elements.randomIntervalUnitSelect.value);
   elements.randomIntervalMaxInput.value = controlValueFromMinutes(settings.randomIntervalMaxMinutes, elements.randomIntervalUnitSelect.value);
+  elements.dailyLimitEnabled.checked = settings.dailyLimitEnabled !== false;
+  elements.dailyLimitInput.value = settings.dailyUploadLimit || 22;
   elements.thumbnailModeSelect.value = settings.thumbnailMode || (settings.thumbnailPath ? "single" : "automatic");
   renderTextPools();
   syncThumbnailControls();
   syncScheduleControls();
+  syncDailyLimitControls();
   elements.workspaceDescription.textContent = `${workspace.name} has its own ${platformName()} account, folder, content details, and posting timer.`;
   renderStatus(activeStatus());
   renderActivity();
@@ -321,6 +346,7 @@ function renderStatus(status) {
     elements.privacySelect, elements.madeForKidsInput]
     .forEach((control) => { control.disabled = running; });
   syncScheduleControls(running);
+  syncDailyLimitControls(running);
   syncThumbnailControls(running);
   renderTextPools();
 
@@ -388,7 +414,11 @@ async function saveQuietly() {
   const workspace = activeWorkspace();
   if (!workspace || activeStatus().running) return;
   workspace.settings = settingsFromForm();
-  try { workspace.settings = await api.saveWorkspace(workspace.id, workspace.settings); }
+  try {
+    workspace.settings = await api.saveWorkspace(workspace.id, workspace.settings);
+    statuses[workspace.id] = await api.getWorkspaceStatus(workspace.id);
+    renderDailyUploadAllowance(activeStatus());
+  }
   catch (error) { showNotice(errorMessage(error)); }
 }
 
@@ -440,6 +470,7 @@ elements.thumbnailClearButton.addEventListener("click", async () => {
   await saveQuietly();
 });
 elements.randomIntervalEnabled.addEventListener("change", async () => { syncScheduleControls(); await saveQuietly(); });
+elements.dailyLimitEnabled.addEventListener("change", async () => { syncDailyLimitControls(); await saveQuietly(); });
 elements.intervalUnitSelect.addEventListener("change", async () => {
   convertControlUnit(elements.intervalInput, elements.intervalUnitSelect.dataset.previousUnit || "minutes", elements.intervalUnitSelect.value);
   elements.intervalUnitSelect.dataset.previousUnit = elements.intervalUnitSelect.value;
@@ -477,9 +508,10 @@ elements.saveDescriptionButton.addEventListener("click", async () => {
   renderTextPools();
   await saveQuietly();
 });
-elements.profileSelect.addEventListener("change", async () => { renderProfiles(elements.profileSelect.value); await saveQuietly(); });
+elements.profileSelect.addEventListener("change", async () => { renderProfiles(elements.profileSelect.value); syncDailyLimitControls(); await saveQuietly(); });
 [elements.intervalInput, elements.randomIntervalMinInput, elements.randomIntervalMaxInput, elements.captionInput,
-  elements.youtubeTitleInput, elements.youtubeDescriptionInput, elements.privacySelect, elements.madeForKidsInput]
+  elements.youtubeTitleInput, elements.youtubeDescriptionInput, elements.privacySelect, elements.madeForKidsInput,
+  elements.dailyLimitInput]
   .forEach((control) => control.addEventListener("change", saveQuietly));
 
 elements.addWorkspaceButton.addEventListener("click", () => {
@@ -576,6 +608,18 @@ elements.stopButton.addEventListener("click", async () => {
   try { statuses[activeWorkspaceId] = await api.stop(activeWorkspaceId); renderStatus(statuses[activeWorkspaceId]); }
   catch (error) { showNotice(errorMessage(error)); }
 });
+elements.resetDailyLimitButton.addEventListener("click", async () => {
+  const workspace = activeWorkspace();
+  const profile = profiles.find((candidate) => candidate.id === elements.profileSelect.value);
+  if (!workspace || !profile) return showNotice("Choose an account profile before resetting its counter.");
+  if (!window.confirm(`Reset the 24-hour upload counter for ${profile.name}? This gives it a fresh allowance immediately.`)) return;
+  hideNotice();
+  try {
+    statuses[workspace.id] = await api.resetUploadLimit(workspace.id);
+    renderStatus(statuses[workspace.id]);
+    showNotice(`Upload counter reset for ${profile.name}.`, "info");
+  } catch (error) { showNotice(errorMessage(error)); }
+});
 elements.clearLogButton.addEventListener("click", () => { const workspace = activeWorkspace(); if (workspace) workspace.activity = []; renderActivity(); });
 elements.openDiagnosticsButton.addEventListener("click", async () => { const error = await api.openDiagnostics(); if (error) showNotice(errorMessage(error)); });
 
@@ -590,7 +634,12 @@ async function initialize() {
     workspaces = data.workspaces.map((workspace) => ({ ...workspace, activity: [] }));
     data.history.slice().reverse().forEach((entry) => {
       const workspace = workspaces.find((candidate) => candidate.id === entry.workspaceId) || workspaces.find((candidate) => candidate.platform === "instagram");
-      if (workspace) workspace.activity.push({ at: entry.createdAt, level: "success", message: `Posted ${entry.fileName}` });
+      if (!workspace) return;
+      if (entry.status === "limit_reset") {
+        workspace.activity.push({ at: entry.createdAt, level: "info", message: "The 24-hour upload counter was reset manually." });
+      } else if (entry.fileName) {
+        workspace.activity.push({ at: entry.createdAt, level: "success", message: `Posted ${entry.fileName}` });
+      }
     });
     activeWorkspaceId = platformWorkspaces()[0]?.id || "";
     lastWorkspaceByPlatform[activePlatform] = activeWorkspaceId;

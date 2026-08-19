@@ -106,6 +106,52 @@ test("starts a 24-hour cooldown from an account's newest upload after upload 22"
   assert.equal(excess.nextAllowedAt, now - 500 + (24 * 60 * 60 * 1000));
 });
 
+test("supports a custom upload cap, disabling the cap, and a manual account reset", () => {
+  const now = Date.parse("2026-08-20T12:00:00.000Z");
+  const uploads = Array.from({ length: 18 }, (_entry, index) => ({
+    id: `upload-${index}`,
+    workspaceId: "queue-1",
+    profileId: "account-1",
+    filePath: `/videos/${index}.mp4`,
+    status: "submitted",
+    createdAt: new Date(now - 10_000 + index).toISOString()
+  }));
+
+  const custom = summarizeUploadAllowance(uploads, "account-1", now, { enabled: true, limit: 18 });
+  assert.equal(custom.allowed, false);
+  assert.equal(custom.count, 18);
+  assert.equal(custom.limit, 18);
+
+  const disabled = summarizeUploadAllowance(uploads, "account-1", now, { enabled: false, limit: 18 });
+  assert.equal(disabled.allowed, true);
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.count, 18);
+
+  const resetHistory = [
+    { id: "new-upload", workspaceId: "queue-1", profileId: "account-1", filePath: "/videos/new.mp4", status: "posted", createdAt: new Date(now - 500).toISOString() },
+    { id: "reset", workspaceId: "queue-1", profileId: "account-1", status: "limit_reset", createdAt: new Date(now - 1_000).toISOString() },
+    ...uploads
+  ];
+  const reset = summarizeUploadAllowance(resetHistory, "account-1", now, { enabled: true, limit: 18 });
+  assert.equal(reset.allowed, true);
+  assert.equal(reset.count, 1);
+  assert.equal(reset.limit, 18);
+});
+
+test("persists a manual upload-counter reset for only the selected account", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-reset-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = new AppStore(root);
+  await store.initialize();
+  await store.addHistory({ status: "submitted", profileId: "account-1", workspaceId: "queue-1", filePath: "/one.mp4" });
+  await store.addHistory({ status: "submitted", profileId: "account-2", workspaceId: "queue-2", filePath: "/two.mp4" });
+  await store.resetUploadAllowance("account-1", { workspaceId: "queue-1", platform: "instagram" });
+
+  assert.equal((await store.getUploadAllowance("account-1", Date.now(), { limit: 1 })).count, 0);
+  assert.equal((await store.getUploadAllowance("account-2", Date.now(), { limit: 1 })).count, 1);
+  assert.equal((await store.getHistory()).some((entry) => entry.status === "limit_reset" && entry.workspaceId === "queue-1"), true);
+});
+
 test("migrates legacy settings into the first queue and persists independent queues", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "reel-queue-store-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

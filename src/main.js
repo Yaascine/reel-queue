@@ -76,6 +76,11 @@ function registerIpc() {
 
   ipcMain.handle("workspaces:create", (_event, platform, name) => store.createWorkspaceWithProfile(platform, name));
   ipcMain.handle("workspaces:save", (_event, id, settings) => store.saveWorkspaceSettings(id, settings));
+  ipcMain.handle("workspaces:status", async (_event, id) => {
+    const workspace = await store.getWorkspace(id);
+    if (!workspace) throw new Error("Queue not found.");
+    return (await automation.getStatuses([workspace]))[id];
+  });
   ipcMain.handle("workspaces:remove", (_event, id) => automation.remove(id));
   ipcMain.handle("app:open-diagnostics", () => shell.openPath(store.screenshotRoot));
   ipcMain.handle("profiles:create", async (_event, platform, name) => {
@@ -102,6 +107,7 @@ function registerIpc() {
   });
   ipcMain.handle("automation:start", (_event, workspaceId, settings) => automation.start(workspaceId, settings));
   ipcMain.handle("automation:stop", (_event, workspaceId) => automation.stop(workspaceId));
+  ipcMain.handle("automation:reset-upload-limit", (_event, workspaceId) => automation.resetUploadAllowance(workspaceId));
 }
 
 const singleInstance = app.requestSingleInstanceLock();

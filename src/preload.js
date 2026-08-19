@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("reelQueue", {
   chooseThumbnailFolder: () => ipcRenderer.invoke("dialog:thumbnail-folder"),
   createWorkspace: (platform, name) => ipcRenderer.invoke("workspaces:create", platform, name),
   saveWorkspace: (id, settings) => ipcRenderer.invoke("workspaces:save", id, settings),
+  getWorkspaceStatus: (id) => ipcRenderer.invoke("workspaces:status", id),
   removeWorkspace: (id) => ipcRenderer.invoke("workspaces:remove", id),
   createProfile: (platform, name) => ipcRenderer.invoke("profiles:create", platform, name),
   removeProfile: (id) => ipcRenderer.invoke("profiles:remove", id),
@@ -14,6 +15,7 @@ contextBridge.exposeInMainWorld("reelQueue", {
   openDiagnostics: () => ipcRenderer.invoke("app:open-diagnostics"),
   start: (workspaceId, settings) => ipcRenderer.invoke("automation:start", workspaceId, settings),
   stop: (workspaceId) => ipcRenderer.invoke("automation:stop", workspaceId),
+  resetUploadLimit: (workspaceId) => ipcRenderer.invoke("automation:reset-upload-limit", workspaceId),
   onStatus: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("automation:status", listener);

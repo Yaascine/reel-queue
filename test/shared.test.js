@@ -37,6 +37,12 @@ test("normalizes interval and caption limits", () => {
   assert.equal(random.randomIntervalMinMinutes, 7);
   assert.equal(random.randomIntervalMaxMinutes, 20);
   assert.deepEqual(random.savedCaptions, ["First", "Second"]);
+  assert.equal(normalizeSettings({}).dailyLimitEnabled, true);
+  assert.equal(normalizeSettings({}).dailyUploadLimit, 22);
+  assert.equal(normalizeSettings({ dailyLimitEnabled: false, dailyUploadLimit: 18 }).dailyLimitEnabled, false);
+  assert.equal(normalizeSettings({ dailyUploadLimit: 18 }).dailyUploadLimit, 18);
+  assert.equal(normalizeSettings({ dailyUploadLimit: 0 }).dailyUploadLimit, 1);
+  assert.equal(normalizeSettings({ dailyUploadLimit: 5000 }).dailyUploadLimit, 1000);
 });
 
 test("normalizes platform-specific settings", () => {
